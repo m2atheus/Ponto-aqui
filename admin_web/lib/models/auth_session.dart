@@ -6,7 +6,7 @@ enum UserRole {
   gestor;
 
   String get apiValue => name.toUpperCase();
-  bool get canManageCompany => this == superadmin || this == rh;
+  bool get canManageCompany => this == rh;
   static UserRole fromApi(Object? value) =>
       switch (value?.toString().toUpperCase()) {
         'SUPERADMIN' => superadmin,

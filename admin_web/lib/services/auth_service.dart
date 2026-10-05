@@ -23,6 +23,28 @@ class AuthService {
   final TokenStorage _storage;
   final bool enableMock;
   final DateTime Function() _now;
+  static const mockUsers = <String, AuthUser>{
+    'admin@teste.com': AuthUser(
+      id: 'mock-superadmin',
+      name: 'Superusuário Teste',
+      email: 'admin@teste.com',
+      role: UserRole.superadmin,
+    ),
+    'rh@teste.com': AuthUser(
+      id: 'mock-rh',
+      name: 'RH Teste',
+      email: 'rh@teste.com',
+      role: UserRole.rh,
+      companyId: 'empresa-demo',
+    ),
+    'gestor@teste.com': AuthUser(
+      id: 'mock-gestor',
+      name: 'Gestor Teste',
+      email: 'gestor@teste.com',
+      role: UserRole.gestor,
+      companyId: 'empresa-demo',
+    ),
+  };
 
   Future<AuthSession> login(String email, String password) async {
     final normalizedEmail = email.trim().toLowerCase();
@@ -31,11 +53,11 @@ class AuthService {
     }
     try {
       final AuthSession session;
-      if (enableMock && normalizedEmail == 'admin@teste.com') {
+      if (enableMock && mockUsers.containsKey(normalizedEmail)) {
         if (password != 'admin') {
           throw const AuthFailure('E-mail ou senha inválidos.');
         }
-        session = _mockSession();
+        session = _mockSession(mockUsers[normalizedEmail]!);
       } else {
         final response = await _dio.post<Map<String, dynamic>>(
           'auth/login',
@@ -76,11 +98,14 @@ class AuthService {
       final cached = AuthSession.fromJson(json);
       if (!cached.expiresAt.isAfter(_now())) return await _discardSession();
       if (cached.isMock || AuthSession.isMockToken(cached.accessToken)) {
+        final expected = mockUsers[cached.user.email];
         if (!enableMock ||
             !cached.isMock ||
             !AuthSession.isMockToken(cached.accessToken) ||
-            cached.user.role != UserRole.superadmin ||
-            cached.user.email != 'admin@teste.com') {
+            expected == null ||
+            cached.user.id != expected.id ||
+            cached.user.role != expected.role ||
+            cached.user.companyId != expected.companyId) {
           return await _discardSession();
         }
         return cached;
@@ -122,23 +147,14 @@ class AuthService {
     return null;
   }
 
-  AuthSession _mockSession() {
+  AuthSession _mockSession(AuthUser user) {
     final expires = _now().add(const Duration(hours: 8));
     String encode(Map<String, dynamic> value) =>
         base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
     final token =
         '${encode({'alg': 'none', 'typ': 'JWT'})}.'
-        '${encode({'sub': 'mock-superadmin', 'role': 'SUPERADMIN', 'exp': expires.millisecondsSinceEpoch ~/ 1000})}.${AuthSession.mockSignature}';
-    return AuthSession(
-      accessToken: token,
-      isMock: true,
-      user: const AuthUser(
-        id: 'mock-superadmin',
-        name: 'Superusuário Teste',
-        email: 'admin@teste.com',
-        role: UserRole.superadmin,
-      ),
-    );
+        '${encode({'sub': user.id, 'role': user.role.apiValue, 'empresa_id': user.companyId, 'exp': expires.millisecondsSinceEpoch ~/ 1000})}.${AuthSession.mockSignature}';
+    return AuthSession(accessToken: token, isMock: true, user: user);
   }
 
   AuthFailure _networkFailure(DioException error) =>

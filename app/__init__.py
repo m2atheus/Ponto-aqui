@@ -5,12 +5,13 @@ from datetime import timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask
+from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import MetaData
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from .config import resolve_database_url
 from .supabase_client import SupabaseExtension
@@ -51,6 +52,8 @@ def create_app(config: dict | None = None) -> Flask:
         JWT_TOKEN_LOCATION=["headers"],
         JWT_ACCESS_TOKEN_EXPIRES=timedelta(minutes=30),
         JWT_REFRESH_TOKEN_EXPIRES=timedelta(days=7),
+        MAX_CONTENT_LENGTH=5 * 1024 * 1024,
+        PONTO_MAX_LOTE=500,
         SUPABASE_URL=os.getenv("SUPABASE_URL", ""),
         SUPABASE_KEY=os.getenv("SUPABASE_KEY", ""),
         SUPABASE_PUBLISHABLE_KEY=os.getenv("SUPABASE_PUBLISHABLE_KEY", ""),
@@ -70,6 +73,8 @@ def create_app(config: dict | None = None) -> Flask:
     supabase.init_app(app)
     db.init_app(app)
     jwt.init_app(app)
+    from .services.auth_service import configurar_erros_jwt
+    configurar_erros_jwt(jwt)
     from . import models  # noqa: F401
     migrate.init_app(app, db, compare_type=True, render_as_batch=False)
     cors.init_app(
@@ -82,8 +87,17 @@ def create_app(config: dict | None = None) -> Flask:
 
     from .routes.mobile_routes import mobile_bp
     from .routes.web_routes import web_bp
+    from .routes.auth_routes import auth_bp
+    app.register_blueprint(auth_bp, url_prefix="/auth")
+    app.register_blueprint(auth_bp, url_prefix="/api/web/auth", name="auth_web")
+    app.register_blueprint(auth_bp, url_prefix="/api/mobile/auth", name="auth_mobile")
     app.register_blueprint(web_bp, url_prefix="/api/web")
     app.register_blueprint(mobile_bp, url_prefix="/api/mobile")
     # A página inicial usa o mesmo handler modular de /api/web/.
     app.add_url_rule("/", endpoint="index", view_func=app.view_functions["web.index"])
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def request_too_large(error):
+        return jsonify({"erro": {"codigo": "REQUISICAO_GRANDE", "mensagem": "Requisição excede o limite de tamanho configurado."}}), 413
+
     return app

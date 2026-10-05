@@ -6,7 +6,7 @@ import uuid
 from sqlalchemy import (
     CheckConstraint, DDL, ForeignKeyConstraint, Index, UniqueConstraint, event,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ExcludeConstraint, JSONB, UUID
 from sqlalchemy.orm import object_session
 
 from . import db
@@ -17,7 +17,9 @@ class PapelUsuario(str, enum.Enum):
     RH = "RH"
     GESTOR = "Gestor"
     FUNCIONARIO = "Funcionario"
-    RELOGIO = "Relogio"
+    USUARIO_SETOR = "UsuarioSetor"
+    # Nome legado preservado para imports do perfil de relógio compartilhado.
+    RELOGIO = "UsuarioSetor"
 
 
 class TipoEscala(str, enum.Enum):
@@ -42,6 +44,23 @@ class StatusAjuste(str, enum.Enum):
     PENDENTE = "Pendente"
     APROVADO = "Aprovado"
     REJEITADO = "Rejeitado"
+
+
+class PoliticaLocalizacao(str, enum.Enum):
+    BLOQUEAR = "Bloquear"
+    PENDENTE = "Pendente"
+    IGNORAR = "Ignorar"
+
+
+class AcaoForaPerimetro(str, enum.Enum):
+    BLOQUEAR = "BLOQUEAR"
+    PENDENTE = "PENDENTE"
+
+
+class SituacaoPonto(str, enum.Enum):
+    ACEITA = "Aceita"
+    PENDENTE = "PendenteAnalise"
+    RECUSADA = "Recusada"
 
 
 def enum_column_type(enum_class, name):
@@ -89,6 +108,11 @@ class Empresas(IdentificadorMixin, CriacaoMixin, db.Model):
 class Usuarios(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.Model):
     __tablename__ = "usuarios"
 
+    empresa_id = db.Column(
+        UUID(as_uuid=True),
+        db.ForeignKey("empresas.id", ondelete="RESTRICT", onupdate="RESTRICT"),
+        nullable=True, index=True,
+    )
     nome = db.Column(db.String(150), nullable=False)
     email = db.Column(db.String(254), nullable=False)
     senha_hash = db.Column(db.Text, nullable=False)
@@ -105,9 +129,40 @@ class Usuarios(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.Model):
 
     __table_args__ = (
         UniqueConstraint("id", "empresa_id", name="uq_usuarios_id_empresa"),
+        UniqueConstraint("email", name="uq_usuarios_email"),
         UniqueConstraint("empresa_id", "email", name="uq_usuarios_empresa_email"),
         UniqueConstraint("empresa_id", "matricula", name="uq_usuarios_empresa_matricula"),
         CheckConstraint("email = lower(email)", name="email_minusculo"),
+        CheckConstraint(
+            "(papel = 'Superadmin' AND empresa_id IS NULL) OR "
+            "(papel <> 'Superadmin' AND empresa_id IS NOT NULL)",
+            name="papel_empresa",
+        ),
+    )
+
+
+class Funcionarios(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.Model):
+    __tablename__ = "funcionarios"
+
+    nome = db.Column(db.String(150), nullable=False)
+    matricula = db.Column(db.String(50), nullable=False)
+    cargo = db.Column(db.String(120))
+    ativo = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
+    # Um funcionário pode ser cadastrado antes de receber uma conta de acesso.
+    usuario_id = db.Column(UUID(as_uuid=True))
+    usuario = db.relationship("Usuarios", viewonly=True)
+    empresa = db.relationship("Empresas", viewonly=True)
+
+    __table_args__ = (
+        UniqueConstraint("id", "empresa_id", name="uq_funcionarios_id_empresa"),
+        UniqueConstraint("id", "empresa_id", "usuario_id", name="uq_funcionarios_identidade"),
+        UniqueConstraint("empresa_id", "matricula", name="uq_funcionarios_empresa_matricula"),
+        UniqueConstraint("empresa_id", "usuario_id", name="uq_funcionarios_empresa_usuario"),
+        ForeignKeyConstraint(
+            ["usuario_id", "empresa_id"], ["usuarios.id", "usuarios.empresa_id"],
+            name="fk_funcionarios_usuario_empresa", ondelete="RESTRICT", onupdate="RESTRICT",
+        ),
+        CheckConstraint("length(trim(matricula)) > 0", name="matricula_preenchida"),
     )
 
 
@@ -115,10 +170,38 @@ class Setores(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.Model):
     __tablename__ = "setores"
 
     nome = db.Column(db.String(120), nullable=False)
+    endereco = db.Column(db.String(255))
     latitude_centro = db.Column(db.Numeric(10, 7), nullable=False)
     longitude_centro = db.Column(db.Numeric(10, 7), nullable=False)
     raio_metros = db.Column(db.Numeric(12, 2), nullable=False)
+    exige_selfie = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    acao_fora_perimetro = db.Column(
+        enum_column_type(AcaoForaPerimetro, "acao_fora_perimetro"), nullable=False,
+        default=AcaoForaPerimetro.BLOQUEAR, server_default="BLOQUEAR",
+    )
+    ignorar_localizacao = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    limite_desvio_relogio_segundos = db.Column(
+        db.Integer, nullable=False, default=120, server_default=db.text("120"),
+    )
     ativo = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
+
+    @property
+    def politica_localizacao(self):
+        """Compatibilidade com o motor W09; políticas persistidas em W02."""
+        if self.ignorar_localizacao:
+            return PoliticaLocalizacao.IGNORAR
+        if self.acao_fora_perimetro == AcaoForaPerimetro.PENDENTE:
+            return PoliticaLocalizacao.PENDENTE
+        return PoliticaLocalizacao.BLOQUEAR
+
+    @politica_localizacao.setter
+    def politica_localizacao(self, value):
+        value = PoliticaLocalizacao(value)
+        self.ignorar_localizacao = value == PoliticaLocalizacao.IGNORAR
+        self.acao_fora_perimetro = (
+            AcaoForaPerimetro.PENDENTE if value == PoliticaLocalizacao.PENDENTE
+            else AcaoForaPerimetro.BLOQUEAR
+        )
 
     __table_args__ = (
         UniqueConstraint("id", "empresa_id", name="uq_setores_id_empresa"),
@@ -126,6 +209,7 @@ class Setores(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.Model):
         CheckConstraint("latitude_centro BETWEEN -90 AND 90", name="latitude_centro_valida"),
         CheckConstraint("longitude_centro BETWEEN -180 AND 180", name="longitude_centro_valida"),
         CheckConstraint("raio_metros > 0", name="raio_positivo"),
+        CheckConstraint("limite_desvio_relogio_segundos >= 0", name="limite_desvio_valido"),
     )
 
 
@@ -154,18 +238,33 @@ class Escalas(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.Model):
 class Alocacoes(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.Model):
     __tablename__ = "alocacoes"
 
-    usuario_id = db.Column(UUID(as_uuid=True), nullable=False)
+    funcionario_id = db.Column(UUID(as_uuid=True), nullable=False)
+    # Mantido para o vínculo das marcações W09 com a conta do funcionário.
+    usuario_id = db.Column(UUID(as_uuid=True))
     setor_id = db.Column(UUID(as_uuid=True), nullable=False)
-    escala_id = db.Column(UUID(as_uuid=True), nullable=False)
+    escala_id = db.Column(UUID(as_uuid=True))
     data_inicio = db.Column(db.Date, nullable=False)
     data_fim = db.Column(db.Date)
 
     usuario = db.relationship("Usuarios", viewonly=True)
+    funcionario = db.relationship(
+        "Funcionarios", viewonly=True,
+        foreign_keys=lambda: [Alocacoes.funcionario_id, Alocacoes.empresa_id],
+    )
     setor = db.relationship("Setores", viewonly=True)
     escala = db.relationship("Escalas", viewonly=True)
 
     __table_args__ = (
         UniqueConstraint("id", "empresa_id", name="uq_alocacoes_id_empresa"),
+        ForeignKeyConstraint(
+            ["funcionario_id", "empresa_id"], ["funcionarios.id", "funcionarios.empresa_id"],
+            name="fk_alocacoes_funcionario_empresa", ondelete="RESTRICT", onupdate="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["funcionario_id", "empresa_id", "usuario_id"],
+            ["funcionarios.id", "funcionarios.empresa_id", "funcionarios.usuario_id"],
+            name="fk_alocacoes_funcionario_usuario", ondelete="RESTRICT", onupdate="RESTRICT",
+        ),
         UniqueConstraint(
             "id", "usuario_id", "setor_id", "empresa_id",
             name="uq_alocacoes_identidade",
@@ -183,7 +282,27 @@ class Alocacoes(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.Model):
             name="fk_alocacoes_escala_empresa", ondelete="RESTRICT", onupdate="RESTRICT",
         ),
         CheckConstraint("data_fim IS NULL OR data_fim >= data_inicio", name="vigencia_valida"),
+        ExcludeConstraint(
+            ("empresa_id", "="), ("funcionario_id", "="), ("setor_id", "="),
+            (db.func.daterange(data_inicio, data_fim, db.literal_column("'[]'")), "&&"),
+            name="ex_alocacoes_periodos_sobrepostos", using="gist",
+        ),
         Index("ix_alocacoes_empresa_usuario_inicio", "empresa_id", "usuario_id", "data_inicio"),
+    )
+
+
+class Dispositivos(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.Model):
+    __tablename__ = "dispositivos"
+
+    usuario_id = db.Column(UUID(as_uuid=True), nullable=False)
+    nome = db.Column(db.String(120), nullable=False)
+    ativo = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
+    __table_args__ = (
+        UniqueConstraint("id", "empresa_id", "usuario_id", name="uq_dispositivos_identidade"),
+        ForeignKeyConstraint(
+            ["usuario_id", "empresa_id"], ["usuarios.id", "usuarios.empresa_id"],
+            name="fk_dispositivos_usuario_empresa", ondelete="RESTRICT", onupdate="RESTRICT",
+        ),
     )
 
 
@@ -206,14 +325,30 @@ class RegistrosPonto(IdentificadorMixin, EmpresaMixin, db.Model):
         server_default=db.func.clock_timestamp(),
     )
     offset_original_minutos = db.Column(db.SmallInteger, nullable=False)
-    latitude = db.Column(db.Numeric(10, 7), nullable=False)
-    longitude = db.Column(db.Numeric(10, 7), nullable=False)
+    desvio_relogio_segundos = db.Column(db.BigInteger, nullable=False, default=0, server_default=db.text("0"))
+    registrado_offline = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    dados_dispositivo = db.Column(JSONB)
+    # O UUID informado é preservado mesmo se o aparelho não for reconhecido.
+    dispositivo_cliente_id = db.Column(UUID(as_uuid=True))
+    dispositivo_registrado_id = db.Column(UUID(as_uuid=True))
+    situacao = db.Column(
+        enum_column_type(SituacaoPonto, "situacao_ponto"), nullable=False,
+        default=SituacaoPonto.ACEITA, server_default="Aceita",
+    )
+    motivos = db.Column(JSONB, nullable=False, default=list, server_default=db.text("'[]'::jsonb"))
+    politica_localizacao_validada = db.Column(
+        enum_column_type(PoliticaLocalizacao, "politica_localizacao"), nullable=False,
+        default=PoliticaLocalizacao.BLOQUEAR, server_default="Bloquear",
+    )
+    limite_desvio_validado_segundos = db.Column(db.Integer, nullable=False, default=120, server_default=db.text("120"))
+    latitude = db.Column(db.Numeric(10, 7), nullable=True)
+    longitude = db.Column(db.Numeric(10, 7), nullable=True)
     precisao_metros = db.Column(db.Numeric(12, 2))
     # Evidência imutável do perímetro utilizado na validação.
     latitude_centro_validada = db.Column(db.Numeric(10, 7), nullable=False)
     longitude_centro_validada = db.Column(db.Numeric(10, 7), nullable=False)
     raio_validado_metros = db.Column(db.Numeric(12, 2), nullable=False)
-    distancia_centro_metros = db.Column(db.Numeric(12, 2), nullable=False)
+    distancia_centro_metros = db.Column(db.Numeric(12, 2), nullable=True)
 
     alocacao = db.relationship("Alocacoes", viewonly=True)
     enviado_por = db.relationship("Usuarios", viewonly=True)
@@ -222,6 +357,12 @@ class RegistrosPonto(IdentificadorMixin, EmpresaMixin, db.Model):
         UniqueConstraint("id", "empresa_id", "usuario_id", name="uq_registros_identidade"),
         UniqueConstraint(
             "empresa_id", "usuario_id", "evento_cliente_id", name="uq_registros_evento_cliente",
+        ),
+        UniqueConstraint("empresa_id", "evento_cliente_id", name="uq_registros_evento_empresa"),
+        ForeignKeyConstraint(
+            ["dispositivo_registrado_id", "empresa_id", "usuario_id"],
+            ["dispositivos.id", "dispositivos.empresa_id", "dispositivos.usuario_id"],
+            name="fk_registros_dispositivo_identidade", ondelete="RESTRICT", onupdate="RESTRICT",
         ),
         ForeignKeyConstraint(
             ["alocacao_id", "usuario_id", "setor_id", "empresa_id"],
@@ -241,10 +382,52 @@ class RegistrosPonto(IdentificadorMixin, EmpresaMixin, db.Model):
         CheckConstraint("longitude_centro_validada BETWEEN -180 AND 180", name="longitude_centro_validada"),
         CheckConstraint("raio_validado_metros > 0", name="raio_validado_positivo"),
         CheckConstraint(
-            "distancia_centro_metros >= 0 AND distancia_centro_metros <= raio_validado_metros",
-            name="distancia_dentro_perimetro",
+            "(latitude IS NULL AND longitude IS NULL AND distancia_centro_metros IS NULL) OR "
+            "(latitude IS NOT NULL AND longitude IS NOT NULL AND distancia_centro_metros IS NOT NULL "
+            "AND distancia_centro_metros >= 0)", name="posicao_consistente",
+        ),
+        CheckConstraint("jsonb_typeof(motivos) = 'array'", name="motivos_array"),
+        CheckConstraint(
+            "(situacao = 'Aceita' AND jsonb_array_length(motivos) = 0) OR "
+            "(situacao <> 'Aceita' AND jsonb_array_length(motivos) > 0)", name="motivos_situacao",
+        ),
+        CheckConstraint(
+            "dispositivo_registrado_id IS NULL OR dispositivo_registrado_id = dispositivo_cliente_id",
+            name="dispositivo_consistente",
+        ),
+        CheckConstraint(
+            "dispositivo_cliente_id IS NULL OR situacao = 'Recusada' OR dispositivo_registrado_id IS NOT NULL",
+            name="dispositivo_situacao",
+        ),
+        CheckConstraint("limite_desvio_validado_segundos >= 0", name="limite_desvio_validado"),
+        CheckConstraint(
+            "situacao <> 'Aceita' OR ((politica_localizacao_validada = 'Ignorar' OR "
+            "(distancia_centro_metros IS NOT NULL AND distancia_centro_metros <= raio_validado_metros)) "
+            "AND desvio_relogio_segundos BETWEEN -limite_desvio_validado_segundos AND limite_desvio_validado_segundos)",
+            name="aceita_consistente",
         ),
         Index("ix_registros_empresa_usuario_ocorrido", "empresa_id", "usuario_id", "ocorrido_em"),
+    )
+
+
+class SelfiesPonto(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.Model):
+    __tablename__ = "selfies_ponto"
+
+    usuario_id = db.Column(UUID(as_uuid=True), nullable=False)
+    evento_cliente_id = db.Column(UUID(as_uuid=True), nullable=False)
+    conteudo = db.Column(db.LargeBinary, nullable=False)
+    content_type = db.Column(db.String(32), nullable=False)
+    sha256 = db.Column(db.String(64), nullable=False)
+    __table_args__ = (
+        UniqueConstraint("empresa_id", "evento_cliente_id", name="uq_selfies_evento_empresa"),
+        ForeignKeyConstraint(
+            ["empresa_id", "usuario_id", "evento_cliente_id"],
+            ["registros_ponto.empresa_id", "registros_ponto.usuario_id", "registros_ponto.evento_cliente_id"],
+            name="fk_selfies_registro_identidade", ondelete="RESTRICT", onupdate="RESTRICT",
+        ),
+        CheckConstraint("sha256 ~ '^[0-9a-f]{64}$'", name="sha256_formato"),
+        CheckConstraint("content_type IN ('image/jpeg', 'image/png')", name="tipo_imagem_valido"),
+        CheckConstraint("octet_length(conteudo) BETWEEN 1 AND 2097152", name="tamanho_imagem_valido"),
     )
 
 
@@ -311,6 +494,14 @@ class JustificativasAjustes(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.M
     )
 
 
+# Nomes singulares para os próximos Services, mantendo imports legados.
+Empresa = Empresas
+Usuario = Usuarios
+Funcionario = Funcionarios
+Setor = Setores
+Alocacao = Alocacoes
+
+
 @event.listens_for(RegistrosPonto, "before_update")
 def impedir_update_ponto(mapper, connection, target):
     session = object_session(target)
@@ -352,3 +543,11 @@ for statement in PONTO_IMUTAVEL_DDL:
         RegistrosPonto.__table__, "after_create",
         DDL(statement).execute_if(dialect="postgresql"),
     )
+
+for model in (SelfiesPonto,):
+    event.listen(model, "before_update", impedir_update_ponto)
+    event.listen(model, "before_delete", impedir_delete_ponto)
+    for statement in PONTO_IMUTAVEL_DDL:
+        event.listen(model.__table__, "after_create", DDL(statement.replace(
+            "registros_ponto", "selfies_ponto"
+        )).execute_if(dialect="postgresql"))

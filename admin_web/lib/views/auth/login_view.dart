@@ -126,7 +126,7 @@ class _LoginViewState extends ConsumerState<LoginView> {
                     if (mockEnabled) ...[
                       const SizedBox(height: 24),
                       const Text(
-                        'Acesso de teste: admin@teste.com\nSenha: admin',
+                        'Acessos de teste: admin@teste.com, rh@teste.com ou gestor@teste.com\nSenha: admin',
                       ),
                     ],
                   ],

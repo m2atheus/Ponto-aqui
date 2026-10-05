@@ -4,7 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import '../providers/auth_provider.dart';
 import '../views/auth/login_view.dart';
-import '../views/dashboard/dashboard_view.dart';
+import '../views/dashboard/dashboard_screen.dart';
+import '../views/empresas/empresas_screen.dart';
+import '../views/escalas/escalas_screen.dart';
 import '../views/layouts/admin_scaffold.dart';
 import '../views/modules/module_placeholder_view.dart';
 import 'access_policy.dart';
@@ -56,7 +58,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'dashboard',
             pageBuilder: (context, state) => NoTransitionPage(
               key: state.pageKey,
-              child: const DashboardView(),
+              child: const DashboardScreen(),
             ),
           ),
           for (final entry in AccessPolicy.modules.entries)
@@ -64,7 +66,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               path: entry.key,
               pageBuilder: (context, state) => NoTransitionPage(
                 key: state.pageKey,
-                child: ModulePlaceholderView(title: entry.value),
+                child: switch (entry.key) {
+                  '/empresas' => const EmpresasScreen(),
+                  '/empresas/nova' => const EmpresasScreen(abrirCadastro: true),
+                  '/escalas' => const EscalasScreen(),
+                  _ => ModulePlaceholderView(title: entry.value),
+                },
               ),
             ),
           GoRoute(
