@@ -1,21 +1,153 @@
-# Ponto Aqui — API de controle de jornada
+# Ponto Aqui — Controle de ponto e jornada
 
-Base Flask com Application Factory, PostgreSQL/Supabase e separação entre
-transporte HTTP e regras de negócio. Requer Python 3.11 ou superior.
+Projeto com API Flask/PostgreSQL no Supabase e painel administrativo Flutter Web.
+O backend usa Application Factory, Blueprints e Service Layer. O painel usa
+Riverpod, Dio e go_router, com navegação por `ShellRoute` e controle de acesso
+por perfil.
 
-## Etapa implementada
+## Requisitos
 
-- `app/__init__.py`: factory, SQLAlchemy, Migrate, JWT e CORS.
-- `app/supabase_client.py`: SDK oficial Supabase, com cliente por contexto Flask.
-- `app/models.py`: Empresas, Usuarios, Setores, Escalas, Alocacoes,
-  RegistrosPonto e JustificativasAjustes.
-- `app/routes/`: Blueprints web/mobile e endpoints de status da aplicação/Supabase.
-- `app/services/`: informações da aplicação e diagnóstico HTTP do Supabase.
-- `migrations/`: migration inicial com enums, constraints e triggers.
-- `tests/`: configuração da aplicação e testes reais de persistência PostgreSQL.
+| Componente | Requisito |
+| --- | --- |
+| Painel Web | Flutter 3.47 ou superior, com Dart 3.13 ou superior, no PATH |
+| Navegador de desenvolvimento | Google Chrome |
+| Backend | Python 3.11 ou superior |
+| Banco do backend | PostgreSQL/Supabase com conexão configurada no `.env` |
 
-Services e endpoints do domínio aguardam a próxima etapa. Login, emissão de tokens,
-batidas e aprovação de ajustes ainda não estão implementados.
+Os comandos deste guia usam Windows/PowerShell. Abra o terminal na raiz deste
+repositório. Para conferir o ambiente Flutter, execute `flutter doctor`.
+
+## Início rápido: testar o painel
+
+O painel de demonstração funciona sem iniciar a API e sem configurar o Supabase.
+Na raiz do projeto, execute:
+
+```powershell
+cd admin_web
+flutter pub get
+flutter run -d chrome --web-port=3000
+```
+
+Abra `http://localhost:3000`. O Login será exibido; após entrar, você acessa o
+Dashboard do seu perfil. Para parar a execução, pressione `Ctrl+C` no terminal.
+
+### Acessos de teste
+
+Todos usam a senha **`admin`**:
+
+| E-mail | Perfil | O que testar |
+| --- | --- | --- |
+| admin@teste.com | SUPERADMIN | Dashboard global e cadastro, edição e desativação de empresas |
+| rh@teste.com | RH | Dashboard da empresa e cadastro, edição e remoção de escalas |
+| gestor@teste.com | GESTOR | Dashboard com justificativas pendentes e navegação dos módulos permitidos |
+
+Use **Sair** no canto superior direito para trocar de perfil. Os acessos mockados
+funcionam em desenvolvimento e são desabilitados por padrão em builds release.
+O JWT fictício não é enviado à API.
+
+Os dados das tabelas ficam em memória: as alterações permanecem durante a
+navegação, mas são reiniciadas ao trocar/encerrar a sessão ou recarregar a página.
+Cadastrar uma empresa nessa demonstração não cria uma empresa nem um usuário
+real no Supabase.
+
+## Executar o backend junto com o painel
+
+Na primeira configuração, siga a seção
+[Configuração no Windows / PowerShell](#configuração-no-windows--powershell)
+para criar a `.venv`, instalar as dependências, preencher o `.env` e preparar o
+banco. Se isso já foi feito, inicie o backend na raiz do repositório:
+
+```powershell
+.\.venv\Scripts\python.exe run.py
+```
+
+A API fica em `http://localhost:5000`. Mantenha esse terminal aberto e, em outro
+terminal na raiz, execute:
+
+```powershell
+cd admin_web
+flutter pub get
+flutter run -d chrome --web-port=3000 --dart-define=API_BASE_URL=http://localhost:5000/api/web/
+```
+
+`API_BASE_URL` já usa esse endereço por padrão; o argumento acima mostra como
+configurá-lo quando o endereço da API mudar. No `.env` do backend, mantenha
+`CORS_ORIGINS=http://localhost:3000` para permitir essa origem. Reinicie o Flask
+após mudar a configuração. `run.py` inicia somente a API; o painel deve ser
+iniciado separadamente com Flutter.
+
+O backend oferece login real; os CRUDs de cadastros ainda estão pendentes.
+Iniciá-lo não ativa a persistência das telas de demonstração. Para aplicar a
+migration, criar a primeira conta e testar o login real, siga o
+[guia W01](docs/W01-auth.md). O contrato está no
+[README do painel](admin_web/README.md#contrato-preparado-para-a-api-flask).
+
+## Funcionalidades disponíveis
+
+| Área | Implementado nesta etapa |
+| --- | --- |
+| Login e navegação | Sessão local, perfis SUPERADMIN/RH/GESTOR, Sidebar responsiva e bloqueio de URLs sem permissão |
+| Dashboard | Empresas e atalho de cadastro para Superadmin; funcionários, setores e escalas ativas para RH; alerta de justificativas para Gestor |
+| Empresas | `DataTable`, cadastro com razão social/CNPJ/e-mail do RH, edição, desativação confirmada e reativação pelo formulário |
+| Escalas | `DataTable`, cadastro/edição de nome, entrada, saída, dias e status; validação de horários e remoção confirmada |
+| API | Factory, SDK Supabase, login JWT real, consulta da sessão, status e sincronização W09 com upload separado de selfies |
+| Banco | Modelos, migrations, dispositivos, selfies, chaves por empresa, RLS e proteção de imutabilidade dos registros de ponto |
+
+Superadmin gerencia empresas e não acessa seus módulos internos. Escalas são
+exclusivas do RH e usam a empresa da sessão. O Gestor acessa Dashboard, Equipe e
+Justificativas; as duas últimas ainda possuem páginas provisórias.
+
+Os números são de demonstração. Os totais de empresas e escalas ativas acompanham
+as listas locais; funcionários, setores e justificativas usam valores fixos.
+Escalas noturnas indicam saída no dia seguinte. O formulário atual é semanal
+básico, sem cálculo de intervalos ou escalas cíclicas.
+
+### Próximas etapas
+
+- CRUD de Funcionários e CRUD de Setores com mapa e geofencing.
+- Persistência dos cadastros via Services e rotas Flask.
+- Aplicativo mobile com fila offline e fluxo de aprovação de ajustes (W10).
+- Equipe, justificativas, alocações e relatórios com dados reais.
+
+## Organização do repositório
+
+```text
+app/             # API Flask: factory, modelos, rotas e Services
+admin_web/       # Painel Flutter Web: models, providers, services, router e views
+migrations/      # Histórico do banco PostgreSQL
+tests/           # Testes do backend
+run.py           # Entrada de desenvolvimento da API
+.env.example     # Exemplo das variáveis do backend
+```
+
+A estrutura detalhada do Flutter, os formulários e o contrato da API estão no
+[README do painel](admin_web/README.md).
+
+## W09: marcações offline
+
+O backend recebe lotes por `POST /api/mobile/marcacoes/lote`, preserva a hora
+do aparelho, desvio e indicador offline, e grava a hora de recebimento no banco.
+O UUID impede duplicações, inclusive com envios simultâneos. Cada item recebe
+a situação Aceita, Pendente de análise ou Recusada e seus motivos.
+
+A distância é calculada no servidor. O setor pode bloquear, deixar pendente
+ou ignorar a localização; desvio absoluto acima do limite (120 segundos por
+padrão) exige análise. Aparelhos não autorizados geram marcações recusadas.
+O upload de selfie usa `POST /api/mobile/marcacoes/{UUID}/selfie` e não altera
+o registro original. Marcações e selfies não possuem edição nem exclusão.
+
+Para atualizar uma instalação existente:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m flask --app app:create_app db upgrade
+```
+
+Esses endpoints exigem JWT real de funcionário, contexto de empresa e aparelho
+cadastrado. O cadastro confiável de aparelhos e a emissão de tokens de teste,
+o JSON do lote, os status por item e as regras de reenvio estão no
+[guia W09](docs/W09.md). Os testes foram realizados em PostgreSQL local;
+a migration precisa ser aplicada à sua conexão para atualizar o Supabase online.
 
 ## Configuração no Windows / PowerShell
 
@@ -145,49 +277,62 @@ e [chaves de API](https://supabase.com/docs/guides/getting-started/api-keys).
 
 ## Decisões dos modelos
 
-**Empresas:** todas as entidades dependentes têm `empresa_id` obrigatório.
+**Empresas:** as entidades dependentes têm `empresa_id` obrigatório, com a
+exceção da conta global de Superadmin.
 Chaves estrangeiras compostas impedem associar usuários, setores, escalas,
 alocações, registros e ajustes de empresas diferentes. Os relacionamentos ORM
 são somente para leitura; os Services persistirão os IDs explicitamente.
-O papel Superadmin permanece vinculado a uma empresa.
+Somente Superadmin tem `empresa_id` nulo. O e-mail de usuário é único globalmente.
 
-Essas constraints protegem os vínculos. O filtro de leitura por `empresa_id`
-extraído do JWT será obrigatório nos Services e ainda não foi implementado.
+Essas constraints protegem os vínculos. Os Services W09 filtram as consultas
+por `empresa_id` extraído do JWT e pelo funcionário autenticado. Os Services
+dos demais cadastros deverão manter esse isolamento.
 
-**Supabase:** a migration habilita RLS nas sete tabelas, sem políticas de acesso
+**Supabase:** as migrations habilitam RLS nas dez tabelas, sem políticas de acesso
 para `anon`/`authenticated`, bloqueando acesso direto pelas APIs públicas do
 Supabase. Esta etapa pressupõe uma conexão exclusiva do backend com papel
 confiável que seja proprietário das tabelas ou tenha `BYPASSRLS`, como a conexão
 PostgreSQL de servidor fornecida pelo Supabase. Essa credencial permanece no
-backend. A autorização por empresa será feita pelos Services; os tokens emitidos
-por Flask-JWT-Extended não serão utilizados como tokens Supabase.
+backend. Os Services W09 autorizam por empresa e funcionário; os tokens emitidos
+por Flask-JWT-Extended não são utilizados como tokens Supabase.
 
 **Escalas:** configurações semanais ou cíclicas ficam em JSONB, com carga semanal
 e tolerância em minutos. O banco exige um objeto JSON; o formato de dias, horários,
 intervalos e ciclos será validado e versionado no EscalaService. A alocação
-identifica funcionário, setor, escala e vigência. Validação de sobreposições e
-vigência no horário da batida pertence ao Service.
+identifica funcionário, setor, escala opcional e vigência. O banco impede períodos
+sobrepostos para o mesmo funcionário/setor. A resposta HTTP de validação e o
+encerramento de alocações serão implementados no AlocacaoService na próxima etapa.
+
+**Funcionários:** nome, matrícula única na empresa, cargo e vínculo opcional com
+uma conta. Chaves compostas preservam os vínculos entre funcionário, alocação e
+conta usada nas marcações W09. Setores recebem endereço, `exige_selfie`,
+`acao_fora_perimetro` e `ignorar_localizacao`; a política efetiva permanece
+compatível com o geofencing W09. Os Services de cadastro serão a próxima etapa.
 
 **Ponto:** uma batida está vinculada a uma alocação do mesmo funcionário, setor e
 empresa. `enviado_por_id` identifica o usuário autenticado que enviou o evento,
-permitindo o futuro fluxo de relógio compartilhado. A autorização para enviar em
-nome de outra pessoa será implementada no Service.
+permitindo o futuro fluxo de relógio compartilhado. O lote W09 aceita apenas
+marcações do próprio funcionário autenticado; envio por relógio compartilhado
+será implementado em outra etapa.
 
 `ocorrido_em` preserva o instante do dispositivo; `recebido_em` é preenchido pelo
 PostgreSQL na inserção. Ambos usam timezone, e o offset original é armazenado
-separadamente. O Service exigirá timezone explícito no payload e trabalhará em UTC.
+separadamente. O Service exige timezone explícito no payload e retorna timestamps
+em UTC, preservando o desvio informado e o indicador de registro offline.
 
 `evento_cliente_id` é um UUID criado no dispositivo antes de entrar na fila
-offline, e permanece igual em retransmissões. A combinação de empresa, funcionário
-e evento é única no banco. O SHA-256 em `payload_hash` será calculado pelo backend
-sobre o conteúdo canônico do evento. O Service tratará conflitos da chave única
-retornando a batida existente, ou rejeitando a reutilização da chave com outro
-conteúdo. Este tratamento e o processamento do lote ainda não estão implementados.
+offline, e permanece igual em retransmissões. Empresa e evento formam uma chave
+única no banco. O backend calcula SHA-256 em `payload_hash` sobre o conteúdo
+canônico e trata conflitos retornando a batida existente, ou rejeitando a
+reutilização da chave com outro conteúdo ou por outro funcionário. O lote usa
+savepoints por item e só confirma recebimentos depois do commit.
 
 **Perímetro:** setores possuem centro e raio. Cada batida preserva um snapshot do
 perímetro e da distância calculada, mantendo a evidência mesmo após alterações no
 setor. As constraints verificam os limites das coordenadas e a consistência da
-distância declarada. O cálculo geográfico real será feito no GeofencingService.
+distância calculada. O GeofencingService usa Haversine no servidor. A política
+do setor e o limite de desvio também ficam preservados na marcação; uma decisão
+de pendência/recusa não descarta a evidência enviada pelo aparelho.
 
 **Imutabilidade:** os triggers bloqueiam UPDATE, DELETE e TRUNCATE, inclusive por
 SQL direto e operações em lote. Eventos ORM também rejeitam alterações e exclusões.
@@ -200,7 +345,7 @@ funcionário. A decisão exige autor e horário. O cálculo da jornada combinar�
 registros originais com os ajustes aprovados, preservando os originais. Autorização,
 transições de aprovação e resolução de ajustes sucessivos pertencem ao Service.
 
-## Testes
+## Testes do backend
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q
@@ -228,22 +373,28 @@ Os campos de conexão PostgreSQL são testados com senhas que contêm caracteres
 especiais, portas inválidas e precedência de `DATABASE_URL`.
 Os endpoints web também são testados para evitar exposição de respostas externas
 e tratar timeouts, falta de configuração e respostas inválidas com JSON estável.
+Os testes W09 cobrem classificação, aparelhos, JWT, lotes mistos, isolamento de
+empresa, selfies, falhas de commit e seis envios simultâneos do mesmo UUID.
+Os testes W01–W03 cobrem senha com hash, erros genéricos, empresa inativa,
+expiração, contrato Flutter, perfis, alocações e migração de dados legados.
 
-## Painel administrativo Web
+## Testes e compilação do painel
 
-O projeto Flutter está em [`admin_web/`](admin_web/README.md), separado da aplicação
-Flask. Inclui Riverpod, Dio com interceptor JWT, Login, controle de acesso por
-perfil e `ShellRoute` com menu responsivo. Para testar a navegação em desenvolvimento,
-use `admin@teste.com` / `admin`. O mock é desabilitado em builds release.
-Os endpoints Flask de autenticação e os CRUDs ficam para etapas posteriores;
-o contrato esperado está documentado no README do painel.
-
-Com o backend em execução, inicie o painel em outro terminal:
+Na raiz do projeto:
 
 ```powershell
 cd admin_web
 flutter pub get
-flutter run -d chrome --web-port=3000 --dart-define=API_BASE_URL=http://localhost:5000/api/web/
+flutter analyze
+flutter test
+flutter build web --release --dart-define=API_BASE_URL=https://SUA_API/api/web/
 ```
 
-Consulte o README do painel para testes, compilação e configuração de hospedagem.
+Substitua `https://SUA_API/api/web/` pelo endereço da API ao preparar uma publicação.
+A compilação gera `admin_web/build/web/`. O mock de login fica desabilitado em
+release. O login real exige banco atualizado, conta cadastrada e API em execução.
+
+Os testes do painel cobrem autenticação, permissões por perfil, navegação,
+formulários, confirmações, isolamento de empresa e telas estreitas. Para publicar,
+a hospedagem precisa servir `index.html` em rotas como `/dashboard` e `/escalas`.
+Veja os detalhes no [README do painel](admin_web/README.md#verificação-e-compilação).

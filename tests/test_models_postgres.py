@@ -30,8 +30,9 @@ def test_allocation_rejects_references_to_other_company(session, tenants, field)
     first, second = tenants
     values = {
         "empresa_id": first.company.id, "usuario_id": first.user.id,
+        "funcionario_id": first.employee.id,
         "setor_id": first.sector.id, "escala_id": first.schedule.id,
-        "data_inicio": date(2020, 1, 1),
+        "data_inicio": date(2019, 1, 1), "data_fim": date(2019, 1, 10),
     }
     foreign_ids = {
         "usuario_id": second.user.id, "setor_id": second.sector.id,
@@ -45,12 +46,12 @@ def test_allocation_rejects_references_to_other_company(session, tenants, field)
     assert error.value.orig.pgcode == "23503"
 
 
-def test_email_and_registration_are_unique_per_company(session, tenants):
-    assert tenants[0].user.email == tenants[1].user.email
+def test_email_is_unique_globally_and_registration_can_repeat_between_companies(session, tenants):
+    assert tenants[0].employee.matricula == tenants[1].employee.matricula
     with pytest.raises(IntegrityError) as error:
         with session.begin_nested():
             session.add(Usuarios(
-                empresa_id=tenants[0].company.id, nome="Duplicado",
+                empresa_id=tenants[1].company.id, nome="Duplicado",
                 email=tenants[0].user.email, senha_hash="hash-de-teste",
             ))
             session.flush()

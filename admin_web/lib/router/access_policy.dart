@@ -2,6 +2,7 @@ import '../models/auth_session.dart';
 
 class AccessPolicy {
   static const modules = <String, String>{
+    '/empresas': 'Empresas',
     '/empresas/nova': 'Cadastrar Empresa',
     '/setores': 'Setores',
     '/escalas': 'Escalas',
@@ -12,7 +13,9 @@ class AccessPolicy {
     '/justificativas': 'Justificativas e ajustes',
   };
   static bool allows(UserRole role, String path) {
-    if (path == '/empresas/nova') return role == UserRole.superadmin;
+    if (path == '/empresas' || path == '/empresas/nova') {
+      return role == UserRole.superadmin;
+    }
     if ({
       '/setores',
       '/escalas',
@@ -21,6 +24,9 @@ class AccessPolicy {
       '/relatorios',
     }.contains(path)) {
       return role.canManageCompany;
+    }
+    if (path == '/equipe' || path == '/justificativas') {
+      return role == UserRole.rh || role == UserRole.gestor;
     }
     return true;
   }

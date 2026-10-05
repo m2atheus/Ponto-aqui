@@ -22,6 +22,23 @@ void main() {
   });
   tearDown(() => dio.close(force: true));
 
+  test(
+    'RH e Gestor de teste restauram seus papéis e empresa sem rede',
+    () async {
+      for (final entry in {
+        'rh@teste.com': UserRole.rh,
+        'gestor@teste.com': UserRole.gestor,
+      }.entries) {
+        final result = await service.login(entry.key, 'admin');
+        expect(result.user.role, entry.value);
+        expect(result.user.companyId, 'empresa-demo');
+        expect((await service.restoreSession())?.user.role, entry.value);
+        await service.logout();
+      }
+      expect(adapter.requests, isEmpty);
+    },
+  );
+
   test('superusuário persiste perfil e JWT sem acessar a rede', () async {
     final session = await service.login(' ADMIN@TESTE.COM ', 'admin');
     expect(session.isMock, isTrue);

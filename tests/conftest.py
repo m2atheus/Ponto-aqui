@@ -11,7 +11,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from app import create_app, db
-from app.models import Alocacoes, Empresas, Escalas, Setores, TipoEscala, Usuarios
+from app.models import Alocacoes, Empresas, Escalas, Funcionarios, Setores, TipoEscala, Usuarios
 
 
 MIGRATIONS = str(Path(__file__).resolve().parents[1] / "migrations")
@@ -102,7 +102,7 @@ def tenants(session):
         session.flush()
         user = Usuarios(
             empresa_id=company.id, nome="Funcionário",
-            email="funcionario@example.com", matricula="001", senha_hash="hash-de-teste",
+            email=f"funcionario{number}@example.com", matricula="001", senha_hash="hash-de-teste",
         )
         sector = Setores(
             empresa_id=company.id, nome="Sede", latitude_centro=-8.0,
@@ -114,14 +114,19 @@ def tenants(session):
         )
         session.add_all([user, sector, schedule])
         session.flush()
+        employee = Funcionarios(
+            empresa_id=company.id, usuario_id=user.id, nome=user.nome, matricula="001",
+        )
+        session.add(employee)
+        session.flush()
         assignment = Alocacoes(
-            empresa_id=company.id, usuario_id=user.id, setor_id=sector.id,
+            empresa_id=company.id, funcionario_id=employee.id, usuario_id=user.id, setor_id=sector.id,
             escala_id=schedule.id, data_inicio=date(2020, 1, 1),
         )
         session.add(assignment)
         session.flush()
         result.append(SimpleNamespace(
-            company=company, user=user, sector=sector,
+            company=company, user=user, employee=employee, sector=sector,
             schedule=schedule, assignment=assignment,
         ))
     return result

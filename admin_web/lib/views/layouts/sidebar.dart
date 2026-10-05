@@ -16,7 +16,9 @@ class Sidebar extends ConsumerWidget {
     Widget item(String title, String path, IconData icon) => ListTile(
       leading: Icon(icon),
       title: Text(title),
-      selected: currentPath == path,
+      selected:
+          currentPath == path ||
+          (path == '/empresas' && currentPath == '/empresas/nova'),
       onTap: () {
         final scaffold = Scaffold.maybeOf(context);
         if (scaffold?.isDrawerOpen ?? false) scaffold!.closeDrawer();
@@ -41,11 +43,7 @@ class Sidebar extends ConsumerWidget {
           const SizedBox(height: 16),
           item('Dashboard', '/dashboard', Icons.dashboard_outlined),
           if (role == UserRole.superadmin)
-            item(
-              'Cadastrar Empresa',
-              '/empresas/nova',
-              Icons.business_outlined,
-            ),
+            item('Empresas', '/empresas', Icons.business_outlined),
           if (role.canManageCompany) ...[
             item('Setores', '/setores', Icons.location_on_outlined),
             item('Escalas', '/escalas', Icons.calendar_month_outlined),
@@ -53,10 +51,7 @@ class Sidebar extends ConsumerWidget {
             item('Alocações', '/alocacoes', Icons.assignment_ind_outlined),
             item('Relatórios', '/relatorios', Icons.assessment_outlined),
           ],
-          // Todos os perfis aceitos no painel podem acompanhar a equipe.
-          if (role == UserRole.superadmin ||
-              role == UserRole.rh ||
-              role == UserRole.gestor) ...[
+          if (role == UserRole.rh || role == UserRole.gestor) ...[
             item('Equipe', '/equipe', Icons.groups_outlined),
             item(
               'Justificativas e ajustes',
