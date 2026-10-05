@@ -228,3 +228,22 @@ Os campos de conexão PostgreSQL são testados com senhas que contêm caracteres
 especiais, portas inválidas e precedência de `DATABASE_URL`.
 Os endpoints web também são testados para evitar exposição de respostas externas
 e tratar timeouts, falta de configuração e respostas inválidas com JSON estável.
+
+## Painel administrativo Web
+
+O projeto Flutter está em [`admin_web/`](admin_web/README.md), separado da aplicação
+Flask. Inclui Riverpod, Dio com interceptor JWT, Login, controle de acesso por
+perfil e `ShellRoute` com menu responsivo. Para testar a navegação em desenvolvimento,
+use `admin@teste.com` / `admin`. O mock é desabilitado em builds release.
+Os endpoints Flask de autenticação e os CRUDs ficam para etapas posteriores;
+o contrato esperado está documentado no README do painel.
+
+Com o backend em execução, inicie o painel em outro terminal:
+
+```powershell
+cd admin_web
+flutter pub get
+flutter run -d chrome --web-port=3000 --dart-define=API_BASE_URL=http://localhost:5000/api/web/
+```
+
+Consulte o README do painel para testes, compilação e configuração de hospedagem.
