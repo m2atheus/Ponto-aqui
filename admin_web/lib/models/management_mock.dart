@@ -1,28 +1,3 @@
-class EmpresaMock {
-  const EmpresaMock({
-    required this.id,
-    required this.razaoSocial,
-    required this.cnpj,
-    required this.adminEmail,
-    this.ativa = true,
-  });
-  final String id;
-  final String razaoSocial;
-  final String cnpj;
-  final String adminEmail;
-  final bool ativa;
-  EmpresaMock copyWith({String? id, bool? ativa}) => EmpresaMock(
-    id: id ?? this.id,
-    razaoSocial: razaoSocial,
-    cnpj: cnpj,
-    adminEmail: adminEmail,
-    ativa: ativa ?? this.ativa,
-  );
-  String get cnpjFormatado =>
-      '${cnpj.substring(0, 2)}.${cnpj.substring(2, 5)}.${cnpj.substring(5, 8)}/'
-      '${cnpj.substring(8, 12)}-${cnpj.substring(12)}';
-}
-
 class EscalaMock {
   EscalaMock({
     required this.id,

@@ -93,6 +93,8 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(auth_bp, url_prefix="/api/mobile/auth", name="auth_mobile")
     app.register_blueprint(web_bp, url_prefix="/api/web")
     app.register_blueprint(mobile_bp, url_prefix="/api/mobile")
+    from .commands import registrar_comandos
+    registrar_comandos(app)
     # A página inicial usa o mesmo handler modular de /api/web/.
     app.add_url_rule("/", endpoint="index", view_func=app.view_functions["web.index"])
 

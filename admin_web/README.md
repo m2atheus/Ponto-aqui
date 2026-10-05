@@ -5,13 +5,13 @@ com Dart 3.13 ou superior. As versões resolvidas estão em `pubspec.lock`.
 
 ## Executar localmente
 
-Para testar as telas com os acessos mockados, basta executar o Flutter. A API e
-o Supabase não precisam estar em execução. Na raiz do repositório:
+O painel usa autenticação real por padrão. Inicie a API e configure a conta
+conforme o [README principal](../README.md). Na raiz do repositório:
 
 ```powershell
 cd admin_web
 flutter pub get
-flutter run -d chrome --web-port=3000
+flutter run -d chrome --web-port=3000 --dart-define=ENABLE_MOCK_AUTH=false
 ```
 
 Abra `http://localhost:3000`. O painel abre no Login; após autenticar, navega para
@@ -88,7 +88,9 @@ telas a partir de 1000 pixels e passa para um Drawer em telas menores.
 
 ## Login e permissões
 
-No modo de desenvolvimento, todos os acessos abaixo usam a senha `admin`:
+O login real usa a senha da conta cadastrada no banco. Os acessos abaixo são
+apenas para demonstração opcional, habilitada com `ENABLE_MOCK_AUTH=true`;
+somente nesse modo usam a senha `admin`:
 
 | E-mail | Perfil |
 | --- | --- |
@@ -98,11 +100,11 @@ No modo de desenvolvimento, todos os acessos abaixo usam a senha `admin`:
 
 O AuthService gera um JWT fictício com validade de oito horas, salva o perfil e
 a empresa correspondente e não faz requisições de autenticação. A sessão de teste permite navegação visual; o
-interceptor bloqueia o envio desse JWT à API. O mock vem desabilitado em builds
-release. Também é possível desativá-lo no desenvolvimento:
+interceptor bloqueia o envio desse JWT à API. O mock vem desabilitado por padrão.
+Para habilitar apenas a navegação de demonstração:
 
 ```powershell
-flutter run -d chrome --web-port=3000 --dart-define=ENABLE_MOCK_AUTH=false
+flutter run -d chrome --web-port=3000 --dart-define=ENABLE_MOCK_AUTH=true
 ```
 
 | Perfil | Itens disponíveis |
@@ -116,12 +118,12 @@ oculta itens sem permissão. O `GoRouter` mantém sua instância durante mudanç
 de autenticação e o `ShellRoute` preserva o layout durante a navegação entre os
 módulos. O login retoma a rota solicitada quando permitida.
 
-## Telas de demonstração
+## Telas e persistência
 
 O Dashboard mostra cards diferentes por perfil: empresas e atalho de cadastro
 para Superadmin; funcionários, setores e escalas ativas para RH; justificativas
-pendentes para Gestor. Os números são fictícios. Os totais de empresas e escalas
-ativas acompanham as alterações das listas locais; funcionários, setores e
+pendentes para Gestor. O total de empresas vem da API. Escalas
+ativas acompanham as alterações da lista local; funcionários, setores e
 justificativas usam valores fixos.
 
 `/empresas` é exclusivo do Superadmin. A tabela mostra razão social, CNPJ,
@@ -129,8 +131,12 @@ administrador/RH e status. Nova Empresa e Editar abrem um formulário com valida
 de campos obrigatórios, e-mail, formato e duplicidade de CNPJ. Desativar pede
 confirmação e preserva a linha; o status pode ser reativado no formulário.
 O atalho `/empresas/nova` abre a tabela com o modal de cadastro.
-O e-mail do administrador é apenas armazenado na lista de demonstração; não cria
-um usuário real nem envia convites.
+O formulário também recebe nome e senha inicial do RH. A API grava empresa e
+conta RH na mesma transação; a senha fica com hash. No cadastro/edição, o diálogo
+só fecha após confirmação do servidor; falhas aparecem no formulário. A senha
+na edição é opcional. A tela consulta o banco novamente ao recarregar a página
+e oferece atualização manual. Sessões mockadas não podem cadastrar empresas.
+Não há envio automático de convites.
 
 `/escalas` é exclusivo do RH. A tabela mostra nome, entrada, saída, dias e status.
 O formulário valida horários HH:mm, nomes duplicados e seleção de ao menos um
@@ -138,8 +144,8 @@ dia. Saída anterior à entrada representa término no dia seguinte e é indicad
 na tabela. Remover pede confirmação. O formulário é semanal básico; não calcula
 intervalos, carga horária legal ou escalas cíclicas.
 
-As listas são mantidas em memória por providers e preservadas ao navegar entre
-as telas. São reiniciadas ao trocar/encerrar a sessão ou recarregar o navegador.
+As listas de escalas são mantidas em memória por providers e preservadas ao
+navegar. São reiniciadas ao trocar/encerrar a sessão ou recarregar o navegador.
 Toda escala recebe o `empresa_id` da sessão, e escritas para outra empresa são
 bloqueadas também no provider. Essas operações não utilizam Dio nem alteram o
 Supabase. Setores com mapa e Funcionários ficam para a próxima etapa.
@@ -179,7 +185,7 @@ RH e Gestor exigem `empresa_id`; Superadmin pode ter contexto global.
 A autorização e os filtros de empresa continuam obrigatórios no backend.
 O e-mail é único globalmente; a API obtém a empresa pelo usuário autenticado.
 Somente Superadmin tem `empresa_id` nulo. Empresa inativa impede login e
-restauração da sessão. Os cadastros das telas continuam mockados nesta etapa.
+restauração da sessão. Empresas usam persistência real; Escalas continuam mockadas.
 
 ## Verificação e compilação
 

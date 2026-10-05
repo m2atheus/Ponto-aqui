@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/auth_session.dart';
@@ -6,10 +5,7 @@ import '../services/auth_service.dart';
 import 'api_providers.dart';
 
 final mockAuthEnabledProvider = Provider<bool>(
-  (ref) => const bool.fromEnvironment(
-    'ENABLE_MOCK_AUTH',
-    defaultValue: !kReleaseMode,
-  ),
+  (ref) => const bool.fromEnvironment('ENABLE_MOCK_AUTH', defaultValue: false),
 );
 final authServiceProvider = Provider<AuthService>(
   (ref) => AuthService(
