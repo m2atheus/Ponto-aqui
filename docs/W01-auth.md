@@ -1,7 +1,8 @@
 # W01 — Modelos e autenticação
 
-Esta etapa implementa os modelos W01/W02/W03 e a autenticação real. Os CRUDs e
-Services de Setores, Funcionários e Alocações serão construídos na próxima etapa.
+O backend implementa os modelos W01/W02/W03, autenticação real e cadastro de
+empresas com seu RH. Os CRUDs de Setores, Funcionários e Alocações serão
+construídos na próxima etapa.
 O aplicativo mobile permanece fora do escopo; a API já compartilha o contrato
 de autenticação com ele.
 
@@ -41,8 +42,16 @@ escala/conta, mas, quando informados, têm vínculos de empresa consistentes.
 
 ## Criar a primeira conta para testar
 
-O cadastro HTTP de empresas/usuários será implementado separadamente. Um operador
-com acesso ao console do backend pode criar a primeira conta global:
+Um operador com acesso ao console do backend pode criar a primeira conta global:
+
+```powershell
+.\.venv\Scripts\python.exe -m flask --app app:create_app criar-superadmin --email admin@teste.com --gerar-senha
+```
+
+O comando grava uma senha forte em `instance/primeiro-acesso-superadmin-*.txt`
+e mostra apenas o caminho, sem imprimir a senha. `instance` não é versionada.
+Sem `--gerar-senha`, pede a senha de forma interativa. Contas existentes nunca
+são sobrescritas. Também é possível provisionar pelo Flask shell:
 
 ```powershell
 .\.venv\Scripts\python.exe -m flask --app app:create_app shell
@@ -128,8 +137,14 @@ cd admin_web
 flutter run -d chrome --web-port=3000 --dart-define=ENABLE_MOCK_AUTH=false --dart-define=API_BASE_URL=http://localhost:5000/api/web/
 ```
 
-Entre com a conta criada no banco. Os cadastros de Empresas/Escalas do painel
-ainda usam listas em memória; autenticação real não muda essa persistência.
+Entre com a conta criada no banco. Empresas usam `GET/POST /api/web/empresas`
+e `PUT/PATCH /api/web/empresas/{UUID}`; apenas Superadmin ativo pode acessar.
+O cadastro recebe `razao_social`, `cnpj`, `ativo`, `admin_nome`, `admin_email`
+e `admin_senha` (mínimo de 8 caracteres). Empresa e RH são gravados na mesma
+transação. A migration `0004` vincula esse responsável à mesma empresa por FK
+composta. Edição pode alterar a conta existente, sem perder seu ID/histórico;
+`PATCH` com `{"ativo": false}` desativa a empresa sem excluí-la.
+Escalas ainda usam listas em memória. O login mockado fica desabilitado por padrão.
 
 Referências: [hashes de senha do Werkzeug](https://werkzeug.palletsprojects.com/en/stable/utils/#werkzeug.security.generate_password_hash),
 [callbacks JWT](https://flask-jwt-extended.readthedocs.io/en/stable/api.html)

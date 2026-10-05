@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../models/auth_session.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/management_mock_provider.dart';
+import '../../providers/empresas_provider.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -20,7 +21,7 @@ class DashboardScreen extends ConsumerWidget {
         cards = [
           _ResumoCard(
             titulo: 'Total de Empresas Cadastradas',
-            valor: ref.watch(empresasMockProvider).length,
+            valor: ref.watch(empresasProvider).asData?.value.length,
             icone: Icons.business_outlined,
             acao: FilledButton.icon(
               onPressed: () => context.go('/empresas/nova'),
@@ -80,10 +81,18 @@ class DashboardScreen extends ConsumerWidget {
               const SizedBox(height: 8),
               const Text('Visão geral de ponto e jornada.'),
               const SizedBox(height: 8),
-              const Text(
-                'Dados de demonstração.',
-                style: TextStyle(color: Colors.grey),
+              Text(
+                session.user.role == UserRole.superadmin
+                    ? 'Total de empresas consultado no banco.'
+                    : 'Dados de demonstração.',
+                style: const TextStyle(color: Colors.grey),
               ),
+              if (session.user.role == UserRole.superadmin &&
+                  ref.watch(empresasProvider).hasError)
+                Text(
+                  ref.watch(empresasProvider).error.toString(),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
               const SizedBox(height: 24),
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -115,7 +124,7 @@ class _ResumoCard extends StatelessWidget {
     this.alerta = false,
   });
   final String titulo;
-  final int valor;
+  final int? valor;
   final IconData icone;
   final Widget? acao;
   final bool alerta;
@@ -131,7 +140,10 @@ class _ResumoCard extends StatelessWidget {
           const SizedBox(height: 16),
           Text(titulo, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 12),
-          Text('$valor', style: Theme.of(context).textTheme.displaySmall),
+          Text(
+            valor == null ? '—' : '$valor',
+            style: Theme.of(context).textTheme.displaySmall,
+          ),
           if (acao != null) ...[const SizedBox(height: 20), acao!],
         ],
       ),

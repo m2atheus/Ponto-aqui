@@ -17,38 +17,70 @@ por perfil.
 Os comandos deste guia usam Windows/PowerShell. Abra o terminal na raiz deste
 repositório. Para conferir o ambiente Flutter, execute `flutter doctor`.
 
-## Início rápido: testar o painel
+## Início rápido: usar o banco real
 
-O painel de demonstração funciona sem iniciar a API e sem configurar o Supabase.
-Na raiz do projeto, execute:
+O login e o cadastro de empresas usam a API por padrão. Configure o `.env`
+conforme a seção [Configuração no Windows / PowerShell](#configuração-no-windows--powershell).
+Na raiz, atualize o banco e inicie a API:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m flask --app app:create_app db upgrade
+.\.venv\Scripts\python.exe run.py
+```
+
+Se ainda não existir um Superadmin real, crie-o uma única vez em outro terminal:
+
+```powershell
+.\.venv\Scripts\python.exe -m flask --app app:create_app criar-superadmin --email admin@teste.com --gerar-senha
+```
+
+O comando informa o caminho `instance/primeiro-acesso-superadmin-*.txt`, com o
+e-mail e a senha forte gerada. Essa pasta não é versionada. A senha **não é
+`admin`**. Uma conta existente nunca é sobrescrita pelo comando.
+
+Com o Flask em execução, abra outro terminal na raiz:
 
 ```powershell
 cd admin_web
 flutter pub get
-flutter run -d chrome --web-port=3000
+flutter run -d chrome --web-port=3000 --dart-define=ENABLE_MOCK_AUTH=false
 ```
 
 Abra `http://localhost:3000`. O Login será exibido; após entrar, você acessa o
-Dashboard do seu perfil. Para parar a execução, pressione `Ctrl+C` no terminal.
+Dashboard do seu perfil. Use a conta real e a senha escolhida/gerada.
+Para parar a execução, pressione `Ctrl+C` no terminal. Reinicie Flask e Flutter
+depois de atualizar o código; recarregar apenas o navegador não atualiza os processos.
 
-### Acessos de teste
+Empresas são gravadas no Supabase e consultadas novamente ao carregar a tela.
+O cadastro exige nome, e-mail e senha inicial do RH: a API cria essa conta
+junto com a empresa, na mesma transação. A edição e a desativação também são
+persistidas. Outras sessões conectadas à mesma API consultam esses dados.
 
-Todos usam a senha **`admin`**:
+### Demonstração opcional, sem gravação de empresas
+
+Para testar a navegação sem API, habilite explicitamente o mock:
+
+```powershell
+cd admin_web
+flutter run -d chrome --web-port=3000 --dart-define=ENABLE_MOCK_AUTH=true
+```
+
+Somente nesse modo, todos os acessos abaixo usam a senha **`admin`**:
 
 | E-mail | Perfil | O que testar |
 | --- | --- | --- |
-| admin@teste.com | SUPERADMIN | Dashboard global e cadastro, edição e desativação de empresas |
+| admin@teste.com | SUPERADMIN | Navegação de Superadmin; gravação de empresas desabilitada |
 | rh@teste.com | RH | Dashboard da empresa e cadastro, edição e remoção de escalas |
 | gestor@teste.com | GESTOR | Dashboard com justificativas pendentes e navegação dos módulos permitidos |
 
 Use **Sair** no canto superior direito para trocar de perfil. Os acessos mockados
-funcionam em desenvolvimento e são desabilitados por padrão em builds release.
+ficam desabilitados por padrão, inclusive em desenvolvimento.
 O JWT fictício não é enviado à API.
 
-Os dados das tabelas ficam em memória: as alterações permanecem durante a
-navegação, mas são reiniciadas ao trocar/encerrar a sessão ou recarregar a página.
-Cadastrar uma empresa nessa demonstração não cria uma empresa nem um usuário
-real no Supabase.
+Escalas ainda usam dados em memória, reiniciados ao trocar/encerrar a sessão
+ou recarregar a página. Empresas exigem sessão real; o mock não simula sucesso
+de um cadastro no banco.
 
 ## Executar o backend junto com o painel
 
@@ -76,9 +108,9 @@ configurá-lo quando o endereço da API mudar. No `.env` do backend, mantenha
 após mudar a configuração. `run.py` inicia somente a API; o painel deve ser
 iniciado separadamente com Flutter.
 
-O backend oferece login real; os CRUDs de cadastros ainda estão pendentes.
-Iniciá-lo não ativa a persistência das telas de demonstração. Para aplicar a
-migration, criar a primeira conta e testar o login real, siga o
+O backend oferece login real e cadastro de empresas/RH. Os CRUDs dos demais
+cadastros ainda estão pendentes. Para aplicar a migration, criar a primeira
+conta e testar o login real, siga o
 [guia W01](docs/W01-auth.md). O contrato está no
 [README do painel](admin_web/README.md#contrato-preparado-para-a-api-flask).
 
@@ -88,7 +120,7 @@ migration, criar a primeira conta e testar o login real, siga o
 | --- | --- |
 | Login e navegação | Sessão local, perfis SUPERADMIN/RH/GESTOR, Sidebar responsiva e bloqueio de URLs sem permissão |
 | Dashboard | Empresas e atalho de cadastro para Superadmin; funcionários, setores e escalas ativas para RH; alerta de justificativas para Gestor |
-| Empresas | `DataTable`, cadastro com razão social/CNPJ/e-mail do RH, edição, desativação confirmada e reativação pelo formulário |
+| Empresas | `DataTable`, cadastro persistente de empresa e RH via Dio/Flask, edição, desativação confirmada e reativação |
 | Escalas | `DataTable`, cadastro/edição de nome, entrada, saída, dias e status; validação de horários e remoção confirmada |
 | API | Factory, SDK Supabase, login JWT real, consulta da sessão, status e sincronização W09 com upload separado de selfies |
 | Banco | Modelos, migrations, dispositivos, selfies, chaves por empresa, RLS e proteção de imutabilidade dos registros de ponto |
@@ -97,15 +129,15 @@ Superadmin gerencia empresas e não acessa seus módulos internos. Escalas são
 exclusivas do RH e usam a empresa da sessão. O Gestor acessa Dashboard, Equipe e
 Justificativas; as duas últimas ainda possuem páginas provisórias.
 
-Os números são de demonstração. Os totais de empresas e escalas ativas acompanham
-as listas locais; funcionários, setores e justificativas usam valores fixos.
+O total de empresas vem do banco. Escalas ativas acompanham a lista local;
+funcionários, setores e justificativas ainda usam valores de demonstração.
 Escalas noturnas indicam saída no dia seguinte. O formulário atual é semanal
 básico, sem cálculo de intervalos ou escalas cíclicas.
 
 ### Próximas etapas
 
 - CRUD de Funcionários e CRUD de Setores com mapa e geofencing.
-- Persistência dos cadastros via Services e rotas Flask.
+- Persistência de Escalas, Setores, Funcionários e Alocações via Services e rotas Flask.
 - Aplicativo mobile com fila offline e fluxo de aprovação de ajustes (W10).
 - Equipe, justificativas, alocações e relatórios com dados reais.
 
@@ -377,6 +409,10 @@ Os testes W09 cobrem classificação, aparelhos, JWT, lotes mistos, isolamento d
 empresa, selfies, falhas de commit e seis envios simultâneos do mesmo UUID.
 Os testes W01–W03 cobrem senha com hash, erros genéricos, empresa inativa,
 expiração, contrato Flutter, perfis, alocações e migração de dados legados.
+Os testes de empresas verificam transação empresa/RH, senha com hash, duplicidade,
+edição/desativação e consulta por sessões HTTP independentes. O Flutter verifica
+consulta após reiniciar os providers, falha da API sem cadastro local e bloqueio
+do mock para gravações reais.
 
 ## Testes e compilação do painel
 

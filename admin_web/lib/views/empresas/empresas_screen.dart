@@ -3,9 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/auth_session.dart';
-import '../../models/management_mock.dart';
+import '../../models/empresa.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/management_mock_provider.dart';
+import '../../providers/empresas_provider.dart';
+import '../../services/empresa_service.dart';
 import '../modules/module_placeholder_view.dart';
 
 class EmpresasScreen extends ConsumerStatefulWidget {
@@ -17,6 +18,7 @@ class EmpresasScreen extends ConsumerStatefulWidget {
 
 class _EmpresasScreenState extends ConsumerState<EmpresasScreen> {
   final _scroll = ScrollController();
+  bool _desativando = false;
   @override
   void initState() {
     super.initState();
@@ -33,25 +35,31 @@ class _EmpresasScreenState extends ConsumerState<EmpresasScreen> {
     super.dispose();
   }
 
-  Future<void> _formulario([EmpresaMock? empresa]) async {
-    final usuarioId = ref.read(authProvider).asData?.value?.user.id;
-    final resultado = await showDialog<EmpresaMock>(
+  Future<void> _formulario([Empresa? empresa]) async {
+    final session = ref.read(authProvider).asData?.value;
+    if (session == null || session.isMock) return;
+    final resultado = await showDialog<bool>(
       context: context,
       useRootNavigator: false,
+      barrierDismissible: false,
       builder: (_) => _EmpresaDialog(
         empresa: empresa,
-        existentes: ref.read(empresasMockProvider),
+        existentes: ref.read(empresasProvider).asData?.value ?? [],
       ),
     );
     if (!mounted ||
-        resultado == null ||
-        ref.read(authProvider).asData?.value?.user.id != usuarioId) {
+        resultado != true ||
+        ref.read(authProvider).asData?.value?.accessToken !=
+            session.accessToken) {
       return;
     }
-    ref.read(empresasMockProvider.notifier).salvar(resultado);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Empresa salva no banco de dados.')),
+    );
   }
 
-  Future<void> _desativar(EmpresaMock empresa) async {
+  Future<void> _desativar(Empresa empresa) async {
+    final token = ref.read(authProvider).asData?.value?.accessToken;
     final confirmar = await showDialog<bool>(
       context: context,
       useRootNavigator: false,
@@ -72,8 +80,20 @@ class _EmpresasScreenState extends ConsumerState<EmpresasScreen> {
         ],
       ),
     );
-    if (mounted && confirmar == true) {
-      ref.read(empresasMockProvider.notifier).desativar(empresa);
+    if (mounted &&
+        confirmar == true &&
+        ref.read(authProvider).asData?.value?.accessToken == token) {
+      setState(() => _desativando = true);
+      try {
+        await ref.read(empresasProvider.notifier).desativar(empresa);
+      } on EmpresaFailure catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(error.message)));
+        }
+      } finally {
+        if (mounted) setState(() => _desativando = false);
+      }
     }
   }
 
@@ -86,7 +106,13 @@ class _EmpresasScreenState extends ConsumerState<EmpresasScreen> {
         message: 'Esta área é exclusiva do Superadmin.',
       );
     }
-    final empresas = ref.watch(empresasMockProvider);
+    final dados = ref.watch(empresasProvider);
+    final empresas = dados.asData?.value ?? <Empresa>[];
+    final podeGravar =
+        ref.watch(authProvider).asData?.value?.isMock == false &&
+        !dados.isLoading &&
+        !dados.hasError &&
+        !_desativando;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -102,17 +128,31 @@ class _EmpresasScreenState extends ConsumerState<EmpresasScreen> {
                 style: Theme.of(context).textTheme.headlineMedium,
               ),
               FilledButton.icon(
-                onPressed: _formulario,
+                onPressed: podeGravar ? _formulario : null,
                 icon: const Icon(Icons.add),
                 label: const Text('Nova Empresa'),
+              ),
+              IconButton(
+                tooltip: 'Atualizar empresas',
+                onPressed: dados.isLoading || _desativando
+                    ? null
+                    : () => ref.invalidate(empresasProvider),
+                icon: const Icon(Icons.refresh),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          const Text(
-            'Dados de demonstração. Alterações ficam em memória até encerrar a sessão ou recarregar a página.',
-          ),
+          const Text('Empresas cadastradas no banco de dados.'),
           const SizedBox(height: 24),
+          if (dados.isLoading) const LinearProgressIndicator(),
+          if (dados.hasError)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                dados.error.toString(),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
           Card(
             child: Scrollbar(
               controller: _scroll,
@@ -146,13 +186,15 @@ class _EmpresasScreenState extends ConsumerState<EmpresasScreen> {
                                   key: Key('editar-empresa-${empresa.id}'),
                                   tooltip: 'Editar ${empresa.razaoSocial}',
                                   icon: const Icon(Icons.edit_outlined),
-                                  onPressed: () => _formulario(empresa),
+                                  onPressed: podeGravar
+                                      ? () => _formulario(empresa)
+                                      : null,
                                 ),
                                 IconButton(
                                   key: Key('desativar-empresa-${empresa.id}'),
                                   tooltip: 'Desativar ${empresa.razaoSocial}',
                                   icon: const Icon(Icons.block),
-                                  onPressed: empresa.ativa
+                                  onPressed: empresa.ativa && podeGravar
                                       ? () => _desativar(empresa)
                                       : null,
                                 ),
@@ -166,7 +208,7 @@ class _EmpresasScreenState extends ConsumerState<EmpresasScreen> {
               ),
             ),
           ),
-          if (empresas.isEmpty)
+          if (empresas.isEmpty && !dados.isLoading && !dados.hasError)
             const Padding(
               padding: EdgeInsets.all(24),
               child: Text('Nenhuma empresa cadastrada.'),
@@ -177,19 +219,23 @@ class _EmpresasScreenState extends ConsumerState<EmpresasScreen> {
   }
 }
 
-class _EmpresaDialog extends StatefulWidget {
+class _EmpresaDialog extends ConsumerStatefulWidget {
   const _EmpresaDialog({this.empresa, required this.existentes});
-  final EmpresaMock? empresa;
-  final List<EmpresaMock> existentes;
+  final Empresa? empresa;
+  final List<Empresa> existentes;
   @override
-  State<_EmpresaDialog> createState() => _EmpresaDialogState();
+  ConsumerState<_EmpresaDialog> createState() => _EmpresaDialogState();
 }
 
-class _EmpresaDialogState extends State<_EmpresaDialog> {
+class _EmpresaDialogState extends ConsumerState<_EmpresaDialog> {
   final _form = GlobalKey<FormState>();
   late final TextEditingController _nome;
   late final TextEditingController _cnpj;
   late final TextEditingController _email;
+  late final TextEditingController _adminNome;
+  final _senha = TextEditingController();
+  bool _salvando = false;
+  String? _erro;
   late bool _ativa;
   @override
   void initState() {
@@ -197,6 +243,7 @@ class _EmpresaDialogState extends State<_EmpresaDialog> {
     _nome = TextEditingController(text: widget.empresa?.razaoSocial ?? '');
     _cnpj = TextEditingController(text: widget.empresa?.cnpjFormatado ?? '');
     _email = TextEditingController(text: widget.empresa?.adminEmail ?? '');
+    _adminNome = TextEditingController(text: widget.empresa?.adminNome ?? '');
     _ativa = widget.empresa?.ativa ?? true;
   }
 
@@ -205,21 +252,41 @@ class _EmpresaDialogState extends State<_EmpresaDialog> {
     _nome.dispose();
     _cnpj.dispose();
     _email.dispose();
+    _adminNome.dispose();
+    _senha.dispose();
     super.dispose();
   }
 
-  void _salvar() {
-    if (!_form.currentState!.validate()) return;
-    Navigator.pop(
-      context,
-      EmpresaMock(
-        id: widget.empresa?.id ?? '',
-        razaoSocial: _nome.text.trim(),
-        cnpj: _cnpj.text.replaceAll(RegExp(r'\D'), ''),
-        adminEmail: _email.text.trim().toLowerCase(),
-        ativa: _ativa,
-      ),
-    );
+  Future<void> _salvar() async {
+    if (_salvando || !_form.currentState!.validate()) return;
+    final token = ref.read(authProvider).asData?.value?.accessToken;
+    setState(() {
+      _salvando = true;
+      _erro = null;
+    });
+    try {
+      await ref
+          .read(empresasProvider.notifier)
+          .salvar(
+            Empresa(
+              id: widget.empresa?.id ?? '',
+              razaoSocial: _nome.text.trim(),
+              cnpj: _cnpj.text.replaceAll(RegExp(r'\D'), ''),
+              adminEmail: _email.text.trim().toLowerCase(),
+              adminNome: _adminNome.text.trim(),
+              ativa: _ativa,
+            ),
+            senhaInicial: _senha.text.isEmpty ? null : _senha.text,
+          );
+      if (mounted &&
+          ref.read(authProvider).asData?.value?.accessToken == token) {
+        Navigator.pop(context, true);
+      }
+    } on EmpresaFailure catch (error) {
+      if (mounted) setState(() => _erro = error.message);
+    } finally {
+      if (mounted) setState(() => _salvando = false);
+    }
   }
 
   @override
@@ -236,6 +303,7 @@ class _EmpresaDialogState extends State<_EmpresaDialog> {
           children: [
             TextFormField(
               key: const Key('empresa-nome'),
+              enabled: !_salvando,
               controller: _nome,
               maxLength: 200,
               textInputAction: TextInputAction.next,
@@ -246,6 +314,7 @@ class _EmpresaDialogState extends State<_EmpresaDialog> {
             ),
             TextFormField(
               key: const Key('empresa-cnpj'),
+              enabled: !_salvando,
               controller: _cnpj,
               maxLength: 18,
               keyboardType: TextInputType.number,
@@ -266,7 +335,20 @@ class _EmpresaDialogState extends State<_EmpresaDialog> {
               },
             ),
             TextFormField(
+              key: const Key('empresa-admin-nome'),
+              controller: _adminNome,
+              enabled: !_salvando,
+              maxLength: 150,
+              decoration: const InputDecoration(
+                labelText: 'Nome do Administrador/RH',
+              ),
+              validator: (value) => value == null || value.trim().isEmpty
+                  ? 'Informe o nome do RH.'
+                  : null,
+            ),
+            TextFormField(
               key: const Key('empresa-email'),
+              enabled: !_salvando,
               controller: _email,
               maxLength: 254,
               keyboardType: TextInputType.emailAddress,
@@ -282,11 +364,38 @@ class _EmpresaDialogState extends State<_EmpresaDialog> {
                   ? 'Informe um e-mail válido.'
                   : null,
             ),
+            TextFormField(
+              key: const Key('empresa-admin-senha'),
+              controller: _senha,
+              obscureText: true,
+              enabled: !_salvando,
+              maxLength: 1024,
+              decoration: InputDecoration(
+                labelText:
+                    widget.empresa == null || widget.empresa!.adminEmail.isEmpty
+                    ? 'Senha inicial do RH'
+                    : 'Nova senha do RH (opcional)',
+              ),
+              validator: (value) =>
+                  ((widget.empresa == null ||
+                          widget.empresa!.adminEmail.isEmpty ||
+                          (value ?? '').isNotEmpty) &&
+                      (value ?? '').length < 8)
+                  ? 'Use uma senha com pelo menos 8 caracteres.'
+                  : null,
+            ),
+            if (_erro != null)
+              Text(
+                _erro!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Empresa ativa'),
               value: _ativa,
-              onChanged: (value) => setState(() => _ativa = value ?? true),
+              onChanged: _salvando
+                  ? null
+                  : (value) => setState(() => _ativa = value ?? true),
             ),
           ],
         ),
@@ -294,10 +403,13 @@ class _EmpresaDialogState extends State<_EmpresaDialog> {
     ),
     actions: [
       TextButton(
-        onPressed: () => Navigator.pop(context),
+        onPressed: _salvando ? null : () => Navigator.pop(context),
         child: const Text('Cancelar'),
       ),
-      FilledButton(onPressed: _salvar, child: const Text('Salvar')),
+      FilledButton(
+        onPressed: _salvando ? null : _salvar,
+        child: Text(_salvando ? 'Salvando...' : 'Salvar'),
+      ),
     ],
   );
 }

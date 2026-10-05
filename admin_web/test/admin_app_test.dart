@@ -9,6 +9,7 @@ import 'package:ponto_aqui_admin/models/management_mock.dart';
 import 'package:ponto_aqui_admin/providers/api_providers.dart';
 import 'package:ponto_aqui_admin/providers/auth_provider.dart';
 import 'package:ponto_aqui_admin/providers/management_mock_provider.dart';
+import 'package:ponto_aqui_admin/providers/empresas_provider.dart';
 import 'package:ponto_aqui_admin/router/app_router.dart';
 import 'package:ponto_aqui_admin/services/api/dio_client.dart';
 import 'package:ponto_aqui_admin/views/layouts/admin_scaffold.dart';
@@ -21,13 +22,15 @@ _mount(
   WidgetTester tester, {
   Size size = const Size(1440, 900),
   UserRole? role,
+  MemoryTokenStorage? sharedStorage,
+  AuthAdapter? sharedAdapter,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = size;
   addTearDown(tester.view.resetDevicePixelRatio);
   addTearDown(tester.view.resetPhysicalSize);
-  final storage = MemoryTokenStorage();
-  final adapter = AuthAdapter();
+  final storage = sharedStorage ?? MemoryTokenStorage();
+  final adapter = sharedAdapter ?? AuthAdapter();
   if (role != null) {
     final session = sessionFor(role);
     storage.session = session.toJson();
@@ -156,6 +159,15 @@ void main() {
       find.byKey(const Key('empresa-email')),
       'RH@NOVA.COM',
     );
+    await tester.enterText(
+      find.byKey(const Key('empresa-admin-nome')),
+      'RH Nova',
+    );
+    await tester.enterText(
+      find.byKey(const Key('empresa-admin-senha')),
+      'senha-inicial-segura',
+    );
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Salvar'));
     await tester.tap(find.text('Salvar'));
     await tester.pumpAndSettle();
     expect(find.text('CNPJ já cadastrado.'), findsOneWidget);
@@ -188,17 +200,112 @@ void main() {
     final container = ProviderScope.containerOf(
       tester.element(find.byType(AdminApp)),
     );
-    expect(container.read(empresasMockProvider).last.ativa, isTrue);
+    expect(container.read(empresasProvider).asData!.value.last.ativa, isTrue);
     await tester.tap(button);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Desativar'));
     await tester.pumpAndSettle();
-    expect(container.read(empresasMockProvider).last.ativa, isFalse);
+    expect(container.read(empresasProvider).asData!.value.last.ativa, isFalse);
     expect(tester.widget<DataTable>(find.byType(DataTable)).rows, hasLength(3));
     app.router.go('/dashboard');
     await tester.pumpAndSettle();
     expect(find.text('3'), findsOneWidget);
+    expect(
+      app.adapter.requests.any(
+        (request) =>
+            request.method == 'POST' && request.uri.path.endsWith('/empresas'),
+      ),
+      isTrue,
+    );
+    expect(
+      app.adapter.requests.any((request) => request.method == 'PUT'),
+      isTrue,
+    );
+    expect(
+      app.adapter.requests.any((request) => request.method == 'PATCH'),
+      isTrue,
+    );
+    // Reinicia a árvore/providers: a nova sessão consulta os dados do servidor.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    final reloaded = await _mount(
+      tester,
+      role: UserRole.superadmin,
+      sharedStorage: app.storage,
+      sharedAdapter: app.adapter,
+    );
+    reloaded.router.go('/empresas');
+    await tester.pumpAndSettle();
+    expect(find.text('Empresa Editada'), findsOneWidget);
+    expect(tester.widget<DataTable>(find.byType(DataTable)).rows, hasLength(3));
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Falha da API mantém o formulário aberto sem cadastro local', (
+    tester,
+  ) async {
+    final app = await _mount(tester, role: UserRole.superadmin);
+    app.router.go('/empresas');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Nova Empresa'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('empresa-nome')),
+      'Não persistida',
+    );
+    await tester.enterText(
+      find.byKey(const Key('empresa-cnpj')),
+      '12345678000195',
+    );
+    await tester.enterText(find.byKey(const Key('empresa-admin-nome')), 'RH');
+    await tester.enterText(
+      find.byKey(const Key('empresa-email')),
+      'rh@erro.com',
+    );
+    await tester.enterText(
+      find.byKey(const Key('empresa-admin-senha')),
+      'SenhaForte123',
+    );
+    app.adapter.statusCode = 503;
+    app.adapter.response = {
+      'erro': {'mensagem': 'Banco indisponível.'},
+    };
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Salvar'));
+    await tester.tap(find.text('Salvar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Banco indisponível.'), findsOneWidget);
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(app.adapter.empresas, hasLength(2));
+    await tester.tap(find.text('Cancelar'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<DataTable>(find.byType(DataTable)).rows, hasLength(2));
+  });
+
+  testWidgets('Superadmin mockado não cadastra empresas nem chama a API', (
+    tester,
+  ) async {
+    final app = await _mount(tester);
+    await _login(tester);
+    app.router.go('/empresas');
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Entre com uma conta real de Superadmin para acessar o banco.'),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Nova Empresa'),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(
+      app.adapter.requests.where(
+        (request) => request.uri.path.contains('/empresas'),
+      ),
+      isEmpty,
+    );
   });
 
   testWidgets('Escalas valida horário e dias, edita e remove com confirmação', (

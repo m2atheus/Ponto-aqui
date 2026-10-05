@@ -94,6 +94,7 @@ class Empresas(IdentificadorMixin, CriacaoMixin, db.Model):
     razao_social = db.Column(db.String(200), nullable=False)
     nome_fantasia = db.Column(db.String(200))
     cnpj = db.Column(db.String(14), nullable=False, unique=True)
+    admin_email = db.Column(db.String(254))
     fuso_horario = db.Column(
         db.String(64), nullable=False, default="America/Sao_Paulo",
         server_default="America/Sao_Paulo",
@@ -102,6 +103,11 @@ class Empresas(IdentificadorMixin, CriacaoMixin, db.Model):
 
     __table_args__ = (
         CheckConstraint("cnpj ~ '^[0-9]{14}$'", name="cnpj_formato"),
+        ForeignKeyConstraint(
+            ["id", "admin_email"], ["usuarios.empresa_id", "usuarios.email"],
+            name="fk_empresas_administrador", use_alter=True,
+            deferrable=True, initially="DEFERRED", ondelete="RESTRICT",
+        ),
     )
 
 
@@ -125,7 +131,7 @@ class Usuarios(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.Model):
     ativo = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
 
     # Relacionamentos somente para leitura. Services persistem os IDs.
-    empresa = db.relationship("Empresas", viewonly=True)
+    empresa = db.relationship("Empresas", viewonly=True, foreign_keys=lambda: [Usuarios.empresa_id])
 
     __table_args__ = (
         UniqueConstraint("id", "empresa_id", name="uq_usuarios_id_empresa"),
