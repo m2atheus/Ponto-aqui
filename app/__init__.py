@@ -81,11 +81,12 @@ def create_app(config: dict | None = None) -> Flask:
         app,
         resources={r"/api/*": {"origins": app.config["CORS_ORIGINS"]}},
         supports_credentials=False,
-        allow_headers=["Authorization", "Content-Type"],
+        allow_headers=["Authorization", "Content-Type", "X-Device-UUID"],
+        expose_headers=["X-Server-Timestamp"],
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     )
 
-    from .routes.mobile_routes import mobile_bp
+    from .routes.mobile_routes import mobile_bp, mobile_v1_bp
     from .routes.web_routes import web_bp
     from .routes.auth_routes import auth_bp
     app.register_blueprint(auth_bp, url_prefix="/auth")
@@ -93,6 +94,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(auth_bp, url_prefix="/api/mobile/auth", name="auth_mobile")
     app.register_blueprint(web_bp, url_prefix="/api/web")
     app.register_blueprint(mobile_bp, url_prefix="/api/mobile")
+    app.register_blueprint(mobile_v1_bp, url_prefix="/api/v1/mobile")
     from .commands import registrar_comandos
     registrar_comandos(app)
     # A página inicial usa o mesmo handler modular de /api/web/.

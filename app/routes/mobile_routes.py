@@ -5,8 +5,27 @@ from flask_jwt_extended import get_jwt, get_jwt_identity, jwt_required
 
 from app.services.registro_ponto_service import RegistroPontoService
 from app.services.selfie_service import SelfieService
+from app.services.mobile_sync_service import MobileSyncService
+from app.middleware.device_middleware import require_device_uuid
 
 mobile_bp = Blueprint("mobile", __name__)
+mobile_v1_bp = Blueprint("mobile_v1", __name__)
+
+
+@mobile_v1_bp.get("/sync")
+@jwt_required()
+@require_device_uuid
+def sincronizar():
+    payload, status = MobileSyncService.sincronizar(
+        empresa_id=get_jwt().get("empresa_id"), usuario_id=get_jwt_identity(),
+        device_uuid=request.headers.get("X-Device-UUID"), claims=get_jwt(),
+    )
+    response = jsonify(payload)
+    response.status_code = status
+    response.headers["Cache-Control"] = "private, no-store"
+    if "server_timestamp" in payload:
+        response.headers["X-Server-Timestamp"] = payload["server_timestamp"]
+    return response
 
 
 @mobile_bp.post("/marcacoes/lote")

@@ -118,9 +118,9 @@ O aparelho autorizado fica disponível em `g.dispositivo`. Para relógios, o fut
 login de conta de setor também deve emitir `setor_id` validado; o decorator exige
 esse vínculo e o papel de conta do setor. Falhas de banco retornam 503.
 
-O decorator ainda não foi aplicado às rotas W09 existentes, nem o novo Service
-foi ligado ao login atual. Essa integração será feita na etapa de Controllers;
-as APIs atuais preservam seu contrato de `dispositivo_id`.
+O decorator está aplicado ao sync W08 em `/api/v1/mobile/sync`. Ele ainda não foi
+aplicado às marcações W09 existentes, nem o novo Service foi ligado ao login
+atual. As APIs atuais preservam seu contrato de `dispositivo_id`.
 
 ## Próxima etapa
 

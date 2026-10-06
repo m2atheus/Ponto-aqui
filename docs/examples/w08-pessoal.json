@@ -1,0 +1,97 @@
+{
+  "server_timestamp": "2026-10-05T15:00:00.000000Z",
+  "data_referencia": "2026-10-05",
+  "fuso_horario": "America/Sao_Paulo",
+  "modo_operacao": "PESSOAL",
+  "status": "OK",
+  "mensagem_status": "Dados sincronizados.",
+  "funcionario": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "usuario_id": "22222222-2222-4222-8222-222222222222",
+    "nome": "Ana Silva",
+    "matricula": "001",
+    "cargo": "Operadora"
+  },
+  "setor": {
+    "id": "33333333-3333-4333-8333-333333333333",
+    "nome": "Sede",
+    "latitude": -8,
+    "longitude": -35,
+    "raio_metros": 100,
+    "politicas": {
+      "exige_selfie": false,
+      "acao_fora_perimetro": "BLOQUEAR",
+      "ignorar_localizacao": false,
+      "limite_desvio_relogio_segundos": 120
+    }
+  },
+  "escala": {
+    "id": "44444444-4444-4444-8444-444444444444",
+    "nome": "Plantão 12x36",
+    "modelo": "12x36",
+    "data_referencia": "2026-10-05",
+    "tolerancia_minutos": 5,
+    "turnos": [
+      {
+        "hora_inicio": "19:00",
+        "hora_fim": "07:00",
+        "tempo_intervalo": 60,
+        "fim_dia_seguinte": false,
+        "dias_semana": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      }
+    ]
+  },
+  "alocacoes": [
+    {
+      "id": "55555555-5555-4555-8555-555555555555",
+      "data_inicio": "2026-10-05",
+      "data_fim": null,
+      "setor": {
+        "id": "33333333-3333-4333-8333-333333333333",
+        "nome": "Sede",
+        "latitude": -8,
+        "longitude": -35,
+        "raio_metros": 100,
+        "politicas": {
+          "exige_selfie": false,
+          "acao_fora_perimetro": "BLOQUEAR",
+          "ignorar_localizacao": false,
+          "limite_desvio_relogio_segundos": 120
+        }
+      },
+      "escala": {
+        "id": "44444444-4444-4444-8444-444444444444",
+        "nome": "Plantão 12x36",
+        "modelo": "12x36",
+        "data_referencia": "2026-10-05",
+        "tolerancia_minutos": 5,
+        "turnos": [
+          {
+            "hora_inicio": "19:00",
+            "hora_fim": "07:00",
+            "tempo_intervalo": 60,
+            "fim_dia_seguinte": false,
+            "dias_semana": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "marcacoes_recentes": []
+}

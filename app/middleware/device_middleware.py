@@ -1,4 +1,4 @@
-"""W07: decorator pronto para as futuras rotas mobile; não aplicado a W09."""
+"""W07: autorização de aparelho no sync W08; não aplicado às marcações W09."""
 
 from functools import wraps
 
