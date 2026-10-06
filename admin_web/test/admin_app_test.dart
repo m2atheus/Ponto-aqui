@@ -75,6 +75,28 @@ Future<void> _login(
 }
 
 void main() {
+  for (final size in [const Size(320, 760), const Size(1024, 768)]) {
+    testWidgets('login com a marca funciona em ${size.width}px', (
+      tester,
+    ) async {
+      await _mount(tester, size: size);
+      expect(find.bySemanticsLabel('Ponto Aqui'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(find.byKey(const Key('login-email')));
+      await tester.enterText(
+        find.byKey(const Key('login-email')),
+        'rh@teste.com',
+      );
+      await tester.enterText(find.byKey(const Key('login-password')), 'admin');
+      await tester.ensureVisible(find.text('Entrar'));
+      await tester.tap(find.text('Entrar'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AdminScaffold), findsOneWidget);
+      expect(find.text('Total de Funcionários'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final role in UserRole.values) {
     testWidgets('Dashboard exibe apenas os cards do perfil ${role.name}', (
       tester,

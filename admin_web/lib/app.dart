@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'router/app_router.dart';
+import 'theme/app_theme.dart';
 
 class AdminApp extends ConsumerWidget {
   const AdminApp({super.key});
@@ -11,10 +12,7 @@ class AdminApp extends ConsumerWidget {
     return MaterialApp.router(
       title: 'Ponto Aqui — Administração',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2563EB)),
-      ),
+      theme: buildAdminTheme(),
       routerConfig: ref.watch(appRouterProvider),
     );
   }

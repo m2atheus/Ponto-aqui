@@ -8,6 +8,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/empresas_provider.dart';
 import '../../services/empresa_service.dart';
 import '../modules/module_placeholder_view.dart';
+import '../widgets/status_badge.dart';
 
 class EmpresasScreen extends ConsumerStatefulWidget {
   const EmpresasScreen({super.key, this.abrirCadastro = false});
@@ -177,7 +178,7 @@ class _EmpresasScreenState extends ConsumerState<EmpresasScreen> {
                           DataCell(Text(empresa.razaoSocial)),
                           DataCell(Text(empresa.cnpjFormatado)),
                           DataCell(Text(empresa.adminEmail)),
-                          DataCell(Text(empresa.ativa ? 'Ativa' : 'Inativa')),
+                          DataCell(StatusBadge(ativo: empresa.ativa)),
                           DataCell(
                             Row(
                               mainAxisSize: MainAxisSize.min,
