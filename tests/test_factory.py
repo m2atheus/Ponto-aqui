@@ -8,7 +8,9 @@ from app import create_app, db
 def test_factory_initializes_extensions_and_blueprints_without_database_access(app):
     configure_mappers()
     assert {"sqlalchemy", "migrate", "flask-jwt-extended"} <= app.extensions.keys()
-    assert set(app.blueprints) == {"web", "mobile", "mobile_v1", "auth", "auth_web", "auth_mobile"}
+    assert set(app.blueprints) == {
+        "web", "web.setores", "mobile", "mobile_v1", "auth", "auth_web", "auth_mobile",
+    }
     assert len(db.metadata.tables) == 13
     url = app.config["SQLALCHEMY_DATABASE_URI"]
     assert url.drivername == "postgresql+psycopg2"

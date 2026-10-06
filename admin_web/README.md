@@ -52,11 +52,22 @@ lib/
 ├── app.dart
 ├── models/
 │   ├── auth_session.dart
+│   ├── funcionario.dart
+│   ├── alocacao.dart
+│   ├── setor.dart
 │   └── management_mock.dart
 ├── providers/
 │   ├── api_providers.dart
 │   ├── auth_provider.dart
+│   ├── funcionarios_provider.dart
+│   ├── alocacoes_provider.dart
+│   ├── setores_provider.dart
 │   └── management_mock_provider.dart
+├── repositories/
+│   ├── funcionario_repository.dart
+│   ├── alocacao_repository.dart
+│   ├── setor_repository.dart
+│   └── repository_failure.dart
 ├── router/
 │   ├── app_router.dart
 │   └── access_policy.dart
@@ -69,6 +80,9 @@ lib/
     ├── dashboard/dashboard_screen.dart
     ├── empresas/empresas_screen.dart
     ├── escalas/escalas_screen.dart
+    ├── funcionarios/funcionarios_screen.dart
+    ├── alocacoes/alocacoes_screen.dart
+    ├── setores/setores_screen.dart
     ├── layouts/admin_scaffold.dart
     ├── layouts/sidebar.dart
     └── modules/module_placeholder_view.dart
@@ -148,7 +162,42 @@ As listas de escalas são mantidas em memória por providers e preservadas ao
 navegar. São reiniciadas ao trocar/encerrar a sessão ou recarregar o navegador.
 Toda escala recebe o `empresa_id` da sessão, e escritas para outra empresa são
 bloqueadas também no provider. Essas operações não utilizam Dio nem alteram o
-Supabase. Setores com mapa e Funcionários ficam para a próxima etapa.
+Supabase.
+
+`/setores` é exclusivo do RH e usa a API para listar, cadastrar, editar e remover
+os locais de trabalho. O formulário tem mapa OpenStreetMap: clique para definir
+o centro e ajuste o raio em metros pelo slider ou pelo campo numérico. Latitude
+e longitude também podem ser digitadas, inclusive se o mapa estiver indisponível.
+Nome, coordenadas e raio positivo são obrigatórios; endereço é opcional.
+Os seletores controlam selfie, localização dispensada e bloqueio ou análise
+fora do perímetro. As políticas e o perímetro existentes são preservados na edição.
+Remover pede confirmação; setores com alocações, inclusive encerradas, recebem
+HTTP 409 e permanecem na tabela. As mudanças aparecem após confirmação da API.
+Sessões de demonstração não gravam setores. Consulte o
+[contrato W02](../docs/W02-admin-web.md).
+
+Após atualizar o projeto, execute `flutter pub get` na pasta `admin_web` para
+instalar os pacotes de mapa e reinicie os dois terminais: Flask e Flutter.
+
+`/funcionarios` é exclusivo do RH e usa Dio para listar, cadastrar, editar e
+desativar, com confirmação e indicadores de carregamento. Nome e matrícula
+são obrigatórios; cargo é opcional conforme o modelo Flask. Erros de negócio
+aparecem no formulário e em SnackBar vermelho. O cadastro só é refletido na
+tabela após a confirmação da API.
+
+As rotas de Funcionários estão implementadas em `/api/web/funcionarios`.
+Após atualizar o código, reinicie o Flask com `python run.py` no ambiente
+virtual e mantenha-o aberto durante o uso do painel. A API valida o perfil RH,
+a empresa da sessão e a matrícula única, e persiste as mudanças no PostgreSQL.
+Consulte o [contrato de integração W03](../docs/W03-admin-web.md).
+`/alocacoes` é exclusivo do RH e usa a API para listar os vínculos com nomes,
+matrículas, setores e datas. Nova Alocação abre um modal com funcionários e
+setores ativos, início obrigatório e fim opcional, em DD/MM/AAAA. Encerrar
+solicita a data final e envia apenas `data_fim`; o registro permanece na tabela.
+O backend recusa períodos sobrepostos no mesmo setor e alterações dos vínculos
+históricos. Erros mantêm o formulário preenchido e aparecem em SnackBar.
+A consulta de setores usa `GET /api/web/setores`, compartilhando os dados reais
+com a gestão de Setores. Novos setores ficam disponíveis no cadastro de alocações.
 
 ## Contrato preparado para a API Flask
 
