@@ -190,6 +190,9 @@ a página ou trocar de sessão.
 | Módulo | Disponível |
 | --- | --- |
 | Login e empresas | Autenticação JWT e cadastro, edição e desativação persistidos no banco. |
+| Funcionários | Listagem, cadastro, edição e desativação pelo RH via `/api/web/funcionarios`, com matrícula única por empresa e histórico preservado. |
+| Setores | CRUD real do RH em `/api/web/setores`, com mapa OpenStreetMap, raio em metros e políticas de ponto. Exclusão bloqueada quando houver alocações, inclusive encerradas. |
+| Alocações | Tela do RH com funcionários, setores e períodos; cadastro e encerramento persistidos em `/api/web/alocacoes`, sem exclusão do histórico. Consulta de setores disponível em `/api/web/setores`. |
 | Dashboard e escalas do painel | Interface por perfil; alguns indicadores e a gestão de escalas ainda usam demonstração. |
 | Escalas e dispositivos na API | Modelos, projeção noturna, motor de conflitos, revogação pessoal e decorator prontos; integração às rotas e ao login pendente. |
 | Sync mobile | `GET /api/v1/mobile/sync`: carga pessoal ou do setor com hora UTC, JWT e aparelho autorizado. |
@@ -242,6 +245,7 @@ run.py       Inicialização da API em desenvolvimento
 
 - [Painel: organização, permissões e compilação](admin_web/README.md).
 - [W01–W03: autenticação, empresas e funcionários](docs/W01-auth.md).
+- [W02: setores, mapa e contrato da API](docs/W02-admin-web.md).
 - [W04–W07: escalas, conflitos e dispositivos](docs/W04-W07-fundacao.md).
 - [W08: sincronização inicial mobile e contrato do payload](docs/W08-sync.md).
 - [W09: marcações offline e selfies](docs/W09.md).
