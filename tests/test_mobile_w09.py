@@ -389,5 +389,5 @@ def test_simultaneous_deliveries_insert_exactly_one_row(capfd):
             with pytest.raises(SystemExit) as blocked:
                 downgrade(directory=str(Path(__file__).resolve().parents[1] / "migrations"), revision="0001")
             assert blocked.value.code == 1
-            assert "Downgrade W01/W03 bloqueado" in capfd.readouterr().err
+            assert "Downgrade W04/W07 bloqueado" in capfd.readouterr().err
             assert db.session.scalar(select(func.count()).select_from(RegistrosPonto)) == 1

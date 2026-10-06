@@ -1,19 +1,14 @@
-# Ponto Aqui — Controle de ponto e jornada
+# Ponto Aqui
 
-Projeto com API Flask/PostgreSQL no Supabase e painel administrativo Flutter Web.
-O backend usa Application Factory, Blueprints e Service Layer. O painel usa
-Riverpod, Dio e go_router, com navegação por `ShellRoute` e controle de acesso
-por perfil.
+API Flask/PostgreSQL no Supabase e painel administrativo Flutter Web.
 
-## Requisitos
+## Antes de começar
 
-| Componente | Requisito |
-| --- | --- |
-| Painel Web | Flutter 3.47 ou superior, com Dart 3.13 ou superior, no PATH |
-| Navegador de desenvolvimento | Google Chrome |
-| Backend | Python 3.11 ou superior |
-| Banco do backend | PostgreSQL/Supabase com conexão configurada no `.env` |
+- Instale Python 3.11+, Flutter com Dart 3.13+ e Google Chrome.
+- Tenha um projeto Supabase e a senha do banco PostgreSQL.
+- Abra o projeto no VS Code e use o terminal PowerShell na raiz, onde está `run.py`.
 
+<<<<<<< Updated upstream
 Os comandos deste guia usam Windows/PowerShell. Abra o terminal na raiz deste
 repositório. Para conferir o ambiente Flutter, execute `flutter doctor`.
 
@@ -182,47 +177,37 @@ o JSON do lote, os status por item e as regras de reenvio estão no
 a migration precisa ser aplicada à sua conexão para atualizar o Supabase online.
 
 ## Configuração no Windows / PowerShell
+=======
+Confira as instalações:
+
+```powershell
+python --version
+flutter doctor
+```
+
+## 1. Instalar o backend
+
+Execute uma vez:
+>>>>>>> Stashed changes
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+Os comandos usam o Python da `.venv`; não é necessário ativá-la.
+
+## 2. Configurar o `.env`
+
+Crie o arquivo sem sobrescrever uma configuração existente:
+
+```powershell
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 .\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-Edite `.env`: preencha `DATABASE_URL` com a URL PostgreSQL do Supabase, ou use os
-campos separados de conexão descritos abaixo. Preencha também
-`JWT_SECRET_KEY` com o segredo gerado e `CORS_ORIGINS` com as origens web permitidas,
-separadas por vírgula. A factory carrega o `.env` da raiz do projeto através de
-python-dotenv, inclusive quando importada diretamente. Variáveis já definidas
-no ambiente têm precedência sobre o arquivo; o dicionário passado a `create_app()`
-tem precedência sobre ambos. Credenciais não são versionadas.
-
-A conexão utiliza `psycopg2`. A factory acrescenta `sslmode=require` se a URL não
-informar outro modo e preserva opções como `verify-full`. Para PostgreSQL local
-sem TLS, informe explicitamente `?sslmode=disable`. Caracteres especiais da senha
-devem ser codificados como componente de URL.
-
-```powershell
-.\.venv\Scripts\python.exe -m flask --app app:create_app db upgrade
-.\.venv\Scripts\python.exe -m flask --app app:create_app run --debug
-```
-
-Também é possível iniciar com `.\.venv\Scripts\python.exe run.py`.
-O debugger fica desativado nessa entrada, salvo quando `FLASK_DEBUG=1`.
-
-Com a aplicação em execução:
-
-- `GET /` ou `GET /api/web/`: informações públicas da API, sem consultas externas.
-- `GET /api/web/supabase/status`: verifica URL/chave no endpoint público de
-  configurações do Supabase Auth, retornando JSON e HTTP 200 ou 503. Não autentica
-  usuários nem consulta dados das empresas; os JWTs do domínio continuam no Flask.
-
-O diagnóstico HTTP não verifica a conexão PostgreSQL nem a presença das tabelas.
-A URL HTTP `https://SEU_PROJECT_REF.supabase.co` pertence a `SUPABASE_URL`.
-Para o PostgreSQL, abra **Connect > Session pooler**, porta 5432, e escolha uma
-das duas formas de configuração. A primeira usa os campos copiados do painel,
-com a senha original entre aspas. Deixe `DATABASE_URL` vazia:
+Copie o segredo gerado para `JWT_SECRET_KEY`. No Supabase, abra **Connect →
+Session pooler** e copie host, porta, banco e usuário. Edite o `.env`:
 
 ```dotenv
 DATABASE_URL=
@@ -230,169 +215,42 @@ DATABASE_HOST=HOST_DO_POOLER
 DATABASE_PORT=5432
 DATABASE_NAME=postgres
 DATABASE_USER=postgres.SEU_PROJECT_REF
-DATABASE_PASSWORD='SUA_SENHA_ORIGINAL'
+DATABASE_PASSWORD='SUA_SENHA_DO_BANCO'
+JWT_SECRET_KEY=SEGREDO_GERADO
+CORS_ORIGINS=http://localhost:3000
 ```
 
-A factory monta uma URL SQLAlchemy com `URL.create()`, preservando caracteres
-especiais na senha sem exigir codificação manual. TLS é habilitado por padrão.
+Substitua os exemplos pelos seus dados. Use a senha original do banco entre
+aspas. Deixe `DATABASE_URL` vazia para usar os campos acima. Se ela já estiver
+preenchida com uma conexão PostgreSQL válida, terá prioridade.
 
-A segunda forma usa a connection string PostgreSQL completa em `DATABASE_URL`,
-que tem precedência sobre os campos separados. Substitua `[YOUR-PASSWORD]` pela
-senha do banco com codificação de URL e adicione `sslmode=require` aos parâmetros:
+`SUPABASE_URL` e `SUPABASE_KEY` são opcionais para o SDK HTTP. A URL
+`https://SEU_PROJECT_REF.supabase.co` não substitui a conexão PostgreSQL.
 
-```dotenv
-DATABASE_URL=postgresql+psycopg2://postgres.SEU_PROJECT_REF:SENHA_CODIFICADA@HOST_DO_POOLER:5432/postgres?sslmode=require
-```
+## 3. Preparar as tabelas
 
-A migration inicial já existe; não execute `db init` novamente. Mudanças futuras
-nos modelos devem gerar migrations com `db migrate`, seguidas de revisão e
-`db upgrade`. Use migrations para preparar o banco: `db.create_all()` não aplica
-o histórico de migrations nem a configuração de RLS.
-
-## SDK Supabase: configuração apresentada no painel Flask
-
-A dependência `supabase` já está em `requirements.txt`. Para atualizar um ambiente
-virtual existente, execute:
+Com o `.env` salvo, execute:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m flask --app app:create_app db upgrade
 ```
 
-No painel Supabase, abra **Connect > Flask (Python)** e copie a URL do projeto e
-a chave publicável completas para o `.env` local:
+O comando cria ou atualiza as tabelas no banco configurado no `.env`, aplicando
+as migrations existentes. Execute novamente quando houver novas migrations.
+Não é necessário executar `db init`.
 
-```dotenv
-SUPABASE_URL=https://SEU_PROJECT_REF.supabase.co
-SUPABASE_KEY=sb_publishable_COPIE_O_VALOR_COMPLETO
-```
-
-O nome `SUPABASE_PUBLISHABLE_KEY`, usado pela documentação atual, também é aceito e
-tem precedência sobre `SUPABASE_KEY`. Preencha um dos dois nomes para a chave.
-Os valores de exemplo devem ser substituídos pelos valores do seu próprio projeto.
-
-`SUPABASE_URL` e a chave configuram o SDK HTTP. A conexão PostgreSQL, através de
-`DATABASE_URL` ou dos campos separados, continua necessária para os modelos
-SQLAlchemy e migrations; `JWT_SECRET_KEY` configura os tokens da API. O projeto
-mantém sua Application Factory e os dois Blueprints.
-
-Se URL e chave do SDK estiverem vazias, os recursos PostgreSQL existentes continuam
-funcionando. Uma configuração parcial gera uma mensagem indicando os campos
-faltantes. Inicializar o SDK não faz uma requisição ao Supabase; as credenciais
-online serão verificadas quando uma operação HTTP for executada.
-
-Os Services podem obter o cliente com:
-
-```python
-from app.supabase_client import get_supabase_client
-
-client = get_supabase_client()  # Dentro de uma requisição ou app.app_context().
-```
-
-O exemplo `supabase.table('todos').select('*')` do painel é uma demonstração de
-consulta. Ele exige uma tabela `todos` exposta e permissões apropriadas. O projeto
-de ponto usa seus próprios modelos e Services; a página inicial retorna JSON e
-não lista dados de empresas com uma chave publicável. Todas as consultas de domínio
-exigirão o `empresa_id` do JWT validado. A inicialização do guia foi adaptada para
-`create_app()` e as rotas permanecem nos Blueprints.
-
-O cliente é criado no primeiro uso dentro do contexto atual. Cada contexto tem
-seu próprio cliente, com persistência e renovação automática de sessão desativadas,
-e o transporte HTTP é fechado ao final. Tokens de um contexto não são compartilhados
-com outros usuários. Consultas do domínio continuam na camada de Services.
-
-A chave publicável respeita RLS. Nossas tabelas não têm políticas de leitura pública;
-uma consulta pelo SDK pode retornar uma lista vazia ou um erro de permissão,
-conforme os grants do projeto. Esta integração mantém as proteções existentes e
-não cria permissões públicas. Os JWTs Flask não são encaminhados automaticamente
-para o Supabase. Referências: [guia Flask](https://supabase.com/docs/guides/getting-started/quickstarts/flask)
-e [chaves de API](https://supabase.com/docs/guides/getting-started/api-keys).
-
-## Decisões dos modelos
-
-**Empresas:** as entidades dependentes têm `empresa_id` obrigatório, com a
-exceção da conta global de Superadmin.
-Chaves estrangeiras compostas impedem associar usuários, setores, escalas,
-alocações, registros e ajustes de empresas diferentes. Os relacionamentos ORM
-são somente para leitura; os Services persistirão os IDs explicitamente.
-Somente Superadmin tem `empresa_id` nulo. O e-mail de usuário é único globalmente.
-
-Essas constraints protegem os vínculos. Os Services W09 filtram as consultas
-por `empresa_id` extraído do JWT e pelo funcionário autenticado. Os Services
-dos demais cadastros deverão manter esse isolamento.
-
-**Supabase:** as migrations habilitam RLS nas dez tabelas, sem políticas de acesso
-para `anon`/`authenticated`, bloqueando acesso direto pelas APIs públicas do
-Supabase. Esta etapa pressupõe uma conexão exclusiva do backend com papel
-confiável que seja proprietário das tabelas ou tenha `BYPASSRLS`, como a conexão
-PostgreSQL de servidor fornecida pelo Supabase. Essa credencial permanece no
-backend. Os Services W09 autorizam por empresa e funcionário; os tokens emitidos
-por Flask-JWT-Extended não são utilizados como tokens Supabase.
-
-**Escalas:** configurações semanais ou cíclicas ficam em JSONB, com carga semanal
-e tolerância em minutos. O banco exige um objeto JSON; o formato de dias, horários,
-intervalos e ciclos será validado e versionado no EscalaService. A alocação
-identifica funcionário, setor, escala opcional e vigência. O banco impede períodos
-sobrepostos para o mesmo funcionário/setor. A resposta HTTP de validação e o
-encerramento de alocações serão implementados no AlocacaoService na próxima etapa.
-
-**Funcionários:** nome, matrícula única na empresa, cargo e vínculo opcional com
-uma conta. Chaves compostas preservam os vínculos entre funcionário, alocação e
-conta usada nas marcações W09. Setores recebem endereço, `exige_selfie`,
-`acao_fora_perimetro` e `ignorar_localizacao`; a política efetiva permanece
-compatível com o geofencing W09. Os Services de cadastro serão a próxima etapa.
-
-**Ponto:** uma batida está vinculada a uma alocação do mesmo funcionário, setor e
-empresa. `enviado_por_id` identifica o usuário autenticado que enviou o evento,
-permitindo o futuro fluxo de relógio compartilhado. O lote W09 aceita apenas
-marcações do próprio funcionário autenticado; envio por relógio compartilhado
-será implementado em outra etapa.
-
-`ocorrido_em` preserva o instante do dispositivo; `recebido_em` é preenchido pelo
-PostgreSQL na inserção. Ambos usam timezone, e o offset original é armazenado
-separadamente. O Service exige timezone explícito no payload e retorna timestamps
-em UTC, preservando o desvio informado e o indicador de registro offline.
-
-`evento_cliente_id` é um UUID criado no dispositivo antes de entrar na fila
-offline, e permanece igual em retransmissões. Empresa e evento formam uma chave
-única no banco. O backend calcula SHA-256 em `payload_hash` sobre o conteúdo
-canônico e trata conflitos retornando a batida existente, ou rejeitando a
-reutilização da chave com outro conteúdo ou por outro funcionário. O lote usa
-savepoints por item e só confirma recebimentos depois do commit.
-
-**Perímetro:** setores possuem centro e raio. Cada batida preserva um snapshot do
-perímetro e da distância calculada, mantendo a evidência mesmo após alterações no
-setor. As constraints verificam os limites das coordenadas e a consistência da
-distância calculada. O GeofencingService usa Haversine no servidor. A política
-do setor e o limite de desvio também ficam preservados na marcação; uma decisão
-de pendência/recusa não descarta a evidência enviada pelo aparelho.
-
-**Imutabilidade:** os triggers bloqueiam UPDATE, DELETE e TRUNCATE, inclusive por
-SQL direto e operações em lote. Eventos ORM também rejeitam alterações e exclusões.
-O usuário do banco utilizado em runtime não deve remover/desabilitar triggers;
-operações administrativas de DDL têm poderes para alterar essa proteção.
-
-**Ajustes:** `registro_ponto_id` preenchido representa retificação; vazio representa
-uma batida esquecida. O vínculo com um ponto existente exige a mesma empresa e
-funcionário. A decisão exige autor e horário. O cálculo da jornada combinará os
-registros originais com os ajustes aprovados, preservando os originais. Autorização,
-transições de aprovação e resolução de ajustes sucessivos pertencem ao Service.
-
-## Testes do backend
+## 4. Iniciar a API — terminal 1
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe run.py
 ```
 
-Sem `TEST_DATABASE_URL`, apenas os testes que não precisam de banco são executados;
-os testes PostgreSQL ficam marcados como ignorados. Para executar todos, use uma
-conexão de teste com permissão de criar schemas e assumir o papel de teste
-`pg_read_all_data` (um superusuário local atende a esses requisitos):
+Abra **http://localhost:5000/**: deve aparecer um JSON com informações da API.
+Mantenha esse terminal aberto.
 
-```powershell
-$env:TEST_DATABASE_URL = 'postgresql://USUARIO:SENHA@localhost:5432/BANCO_TESTE?sslmode=disable'
-.\.venv\Scripts\python.exe -m pytest -q
-```
+## 5. Iniciar o painel — terminal 2
 
+<<<<<<< Updated upstream
 Os testes criam um schema com nome aleatório, aplicam a migration nele e removem
 apenas esse schema ao terminar. `DATABASE_URL` da aplicação não é reutilizada.
 São verificadas as referências entre empresas, chave de idempotência, timestamps,
@@ -417,20 +275,102 @@ do mock para gravações reais.
 ## Testes e compilação do painel
 
 Na raiz do projeto:
+=======
+Abra outro terminal na raiz do projeto:
+>>>>>>> Stashed changes
 
 ```powershell
 cd admin_web
 flutter pub get
-flutter analyze
-flutter test
-flutter build web --release --dart-define=API_BASE_URL=https://SUA_API/api/web/
+flutter run -d chrome --web-port=3000
 ```
 
-Substitua `https://SUA_API/api/web/` pelo endereço da API ao preparar uma publicação.
-A compilação gera `admin_web/build/web/`. O mock de login fica desabilitado em
-release. O login real exige banco atualizado, conta cadastrada e API em execução.
+O painel abre em **http://localhost:3000** e usa a API em
+`http://localhost:5000/api/web/` por padrão.
 
-Os testes do painel cobrem autenticação, permissões por perfil, navegação,
-formulários, confirmações, isolamento de empresa e telas estreitas. Para publicar,
-a hospedagem precisa servir `index.html` em rotas como `/dashboard` e `/escalas`.
-Veja os detalhes no [README do painel](admin_web/README.md#verificação-e-compilação).
+### Entrar para testar as telas
+
+Todos os acessos abaixo usam a senha **`admin`**:
+
+| E-mail | Perfil |
+| --- | --- |
+| admin@teste.com | Superadmin |
+| rh@teste.com | RH |
+| gestor@teste.com | Gestor |
+
+Esses acessos são de demonstração e também funcionam sem API. Os cadastros de
+Empresas e Escalas ficam em memória e somem ao recarregar a página.
+
+### Entrar com uma conta real
+
+Se ainda não tiver uma conta, siga o
+[passo a passo para criar o primeiro Superadmin](docs/W01-auth.md#criar-a-primeira-conta-para-testar).
+Depois, pare o Flutter com `Ctrl+C` e execute na pasta `admin_web`:
+
+```powershell
+flutter run -d chrome --web-port=3000 --dart-define=ENABLE_MOCK_AUTH=false
+```
+
+Entre com o e-mail e a senha cadastrados no banco. O login real ainda não
+ativa a persistência dos formulários de Empresas e Escalas.
+
+## Nas próximas execuções
+
+Com a instalação pronta, basta abrir dois terminais na raiz do projeto:
+
+**Terminal 1 — API:**
+
+```powershell
+.\.venv\Scripts\python.exe run.py
+```
+
+**Terminal 2 — painel:**
+
+```powershell
+cd admin_web
+flutter run -d chrome --web-port=3000
+```
+
+Para login real, acrescente `--dart-define=ENABLE_MOCK_AUTH=false` ao comando
+Flutter. Para parar cada aplicação, use `Ctrl+C` no respectivo terminal.
+
+## Problemas comuns
+
+| Problema | O que fazer |
+| --- | --- |
+| `python` ou `flutter` não encontrado | Confira a instalação e o PATH; reabra o terminal. |
+| Falha ao executar `db upgrade` | Confira os campos de conexão e a senha do banco no `.env`. |
+| Painel não conecta à API | Mantenha o Flask aberto e confira `CORS_ORIGINS=http://localhost:3000`. Reinicie a API após alterar o `.env`. |
+| Login real usa o acesso de demonstração | Reinicie o Flutter com `--dart-define=ENABLE_MOCK_AUTH=false`. |
+| Cadastro desaparece ao atualizar | Os formulários atuais usam dados em memória; a integração dos CRUDs está pendente. |
+
+## Testes — opcional
+
+Na raiz do projeto:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+Para os testes PostgreSQL, configure `TEST_DATABASE_URL` com um banco de teste
+com permissão para criar schemas e assumir o papel `pg_read_all_data`.
+Sem essa variável, os testes que precisam de banco são ignorados.
+
+Na pasta `admin_web`:
+
+```powershell
+flutter analyze
+flutter test
+```
+
+## Guias técnicos
+
+- [Painel Flutter, organização e compilação](admin_web/README.md).
+- [W01–W03: autenticação, empresas e funcionários](docs/W01-auth.md).
+- [W04–W07: escalas, conflitos e dispositivos](docs/W04-W07-fundacao.md).
+- [W09: marcações offline e selfies](docs/W09.md).
+
+O motor de conflitos, a auto-revogação de aparelhos e o decorator mobile estão
+implementados como Services/middleware; a integração às rotas e ao login está
+pendente. A API atual oferece autenticação JWT e sincronização de ponto offline.

@@ -10,3 +10,4 @@ python-dotenv>=1.1,<2
 supabase>=2.32,<3
 httpx>=0.28,<0.29
 Pillow>=12,<13
+tzdata>=2025.2
