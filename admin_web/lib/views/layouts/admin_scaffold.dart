@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/auth_provider.dart';
+import '../../theme/app_theme.dart';
+import '../widgets/brand_logo.dart';
 import 'sidebar.dart';
 
 class AdminScaffold extends ConsumerWidget {
@@ -19,8 +21,35 @@ class AdminScaffold extends ConsumerWidget {
       final sidebar = Sidebar(currentPath: currentPath);
       return Scaffold(
         appBar: AppBar(
-          title: const Text('Ponto Aqui'),
+          title: desktop
+              ? const Text(
+                  'Gestão de ponto e jornada',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                )
+              : const BrandLogo(width: 150),
+          bottom: const PreferredSize(
+            preferredSize: Size.fromHeight(1),
+            child: Divider(height: 1),
+          ),
           actions: [
+            if (constraints.maxWidth >= 600)
+              const Padding(
+                padding: EdgeInsets.only(right: 16),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.verified_user_outlined,
+                      size: 16,
+                      color: BrandColors.teal,
+                    ),
+                    SizedBox(width: 6),
+                    Text(
+                      'Área administrativa',
+                      style: TextStyle(color: BrandColors.muted, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
             IconButton(
               tooltip: 'Sair',
               icon: const Icon(Icons.logout),
@@ -33,7 +62,7 @@ class AdminScaffold extends ConsumerWidget {
           children: [
             if (desktop) ...[
               SizedBox(
-                width: 260,
+                width: 280,
                 child: Material(
                   color: Theme.of(context).colorScheme.surface,
                   child: sidebar,

@@ -8,6 +8,7 @@ import '../../models/auth_session.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/management_mock_provider.dart';
 import '../../providers/empresas_provider.dart';
+import '../../theme/app_theme.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -85,7 +86,7 @@ class DashboardScreen extends ConsumerWidget {
                 session.user.role == UserRole.superadmin
                     ? 'Total de empresas consultado no banco.'
                     : 'Dados de demonstração.',
-                style: const TextStyle(color: Colors.grey),
+                style: const TextStyle(color: BrandColors.muted, fontSize: 12),
               ),
               if (session.user.role == UserRole.superadmin &&
                   ref.watch(empresasProvider).hasError)
@@ -106,6 +107,48 @@ class DashboardScreen extends ConsumerWidget {
                     ],
                   );
                 },
+              ),
+              const SizedBox(height: 28),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: BrandColors.navy,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Wrap(
+                  spacing: 20,
+                  runSpacing: 12,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.schedule_outlined,
+                      color: Color(0xFF77DED4),
+                      size: 32,
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Olá, ${session.user.name.split(' ').first}.',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Acompanhe sua operação pelo menu ao lado.',
+                          style: TextStyle(
+                            color: Color(0xFFC5DEE7),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -136,13 +179,27 @@ class _ResumoCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icone),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: alerta ? BrandColors.warningSurface : BrandColors.mint,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              icone,
+              size: 24,
+              color: alerta ? BrandColors.warning : BrandColors.teal,
+            ),
+          ),
           const SizedBox(height: 16),
           Text(titulo, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 12),
           Text(
             valor == null ? '—' : '$valor',
-            style: Theme.of(context).textTheme.displaySmall,
+            style: Theme.of(context).textTheme.displaySmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: alerta ? BrandColors.warning : BrandColors.navy,
+            ),
           ),
           if (acao != null) ...[const SizedBox(height: 20), acao!],
         ],

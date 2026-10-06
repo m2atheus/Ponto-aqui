@@ -6,6 +6,7 @@ import '../../models/management_mock.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/management_mock_provider.dart';
 import '../modules/module_placeholder_view.dart';
+import '../widgets/status_badge.dart';
 
 class EscalasScreen extends ConsumerStatefulWidget {
   const EscalasScreen({super.key});
@@ -139,7 +140,7 @@ class _EscalasScreenState extends ConsumerState<EscalasScreen> {
                             ),
                           ),
                           DataCell(Text(escala.diasFormatados)),
-                          DataCell(Text(escala.ativa ? 'Ativa' : 'Inativa')),
+                          DataCell(StatusBadge(ativo: escala.ativa)),
                           DataCell(
                             Row(
                               mainAxisSize: MainAxisSize.min,
