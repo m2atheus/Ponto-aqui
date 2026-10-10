@@ -26,7 +26,7 @@ RepositoryFailure _httpFailure(DioException error) {
       ? detail['codigo'] as String
       : null;
   String? message;
-  if ({400, 404, 409, 422}.contains(status) && detail is Map) {
+  if ({400, 404, 409, 413, 422}.contains(status) && detail is Map) {
     final value = detail['mensagem'];
     if (value is String &&
         value.trim().isNotEmpty &&
@@ -46,6 +46,8 @@ RepositoryFailure _httpFailure(DioException error) {
       'Recurso não encontrado na API. Confira o endereço e atualize a lista.',
     409 =>
       'O cadastro conflita com dados existentes. Revise os dados informados.',
+    413 =>
+      'O arquivo excede o tamanho permitido. Selecione um anexo de até 10 MB.',
     _ => switch (error.type) {
       DioExceptionType.connectionTimeout ||
       DioExceptionType.receiveTimeout ||

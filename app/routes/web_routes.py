@@ -8,10 +8,22 @@ from app.services.supabase_service import SupabaseService
 from app.services.empresa_service import EmpresaService
 from app.services.funcionario_service import FuncionarioService
 from app.services.alocacao_service import AlocacaoService
+from app.services.dashboard_service import DashboardService
 from .setor_routes import setor_bp
+from .w06_routes import w06_bp
+from .escala_routes import escala_bp
 
 web_bp = Blueprint("web", __name__)
 web_bp.register_blueprint(setor_bp, url_prefix="/setores")
+web_bp.register_blueprint(w06_bp)
+web_bp.register_blueprint(escala_bp, url_prefix="/escalas")
+
+
+@web_bp.get("/dashboard")
+@jwt_required()
+def dashboard():
+    payload, status = DashboardService.consultar(get_jwt_identity(), get_jwt().get("empresa_id"))
+    return jsonify(payload), status
 
 
 @web_bp.get("/alocacoes")

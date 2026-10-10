@@ -10,6 +10,9 @@ import '../views/escalas/escalas_screen.dart';
 import '../views/funcionarios/funcionarios_screen.dart';
 import '../views/alocacoes/alocacoes_screen.dart';
 import '../views/setores/setores_screen.dart';
+import '../views/justificativas/justificativas_screen.dart';
+import '../views/equipe/equipe_screen.dart';
+import '../views/relatorios/relatorios_screen.dart';
 import '../views/layouts/admin_scaffold.dart';
 import '../views/modules/module_placeholder_view.dart';
 import 'access_policy.dart';
@@ -76,6 +79,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   '/funcionarios' => const FuncionariosScreen(),
                   '/alocacoes' => const AlocacoesScreen(),
                   '/setores' => const SetoresScreen(),
+                  '/justificativas' => const JustificativasScreen(),
+                  '/equipe' => const EquipeScreen(),
+                  '/relatorios' => const RelatoriosScreen(),
                   _ => ModulePlaceholderView(title: entry.value),
                 },
               ),

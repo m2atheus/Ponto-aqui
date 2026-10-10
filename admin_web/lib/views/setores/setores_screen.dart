@@ -3,6 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../widgets/responsive_table_container.dart';
+
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -211,111 +214,105 @@ class _SetoresScreenState extends ConsumerState<SetoresScreen> {
               )
             else
               Card(
-                child: Scrollbar(
+                child: ResponsiveTableContainer(
                   controller: _scroll,
-                  thumbVisibility: true,
-                  child: SingleChildScrollView(
-                    controller: _scroll,
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: DataTable(
-                      dataRowMinHeight: 72,
-                      dataRowMaxHeight: 120,
-                      columns: const [
-                        DataColumn(label: Text('Nome')),
-                        DataColumn(label: Text('Endereço')),
-                        DataColumn(label: Text('Raio')),
-                        DataColumn(label: Text('Políticas')),
-                        DataColumn(label: Text('Ações')),
-                      ],
-                      rows: [
-                        for (final setor in rows)
-                          DataRow(
-                            key: ValueKey(setor.id),
-                            cells: [
-                              DataCell(Text(setor.nome)),
-                              DataCell(
-                                SizedBox(
-                                  width: 240,
-                                  child: Text(
-                                    setor.endereco?.isNotEmpty == true
-                                        ? setor.endereco!
-                                        : '—',
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: DataTable(
+                    dataRowMinHeight: 72,
+                    dataRowMaxHeight: 120,
+                    columns: const [
+                      DataColumn(label: Text('Nome')),
+                      DataColumn(label: Text('Endereço')),
+                      DataColumn(label: Text('Raio')),
+                      DataColumn(label: Text('Políticas')),
+                      DataColumn(label: Text('Ações')),
+                    ],
+                    rows: [
+                      for (final setor in rows)
+                        DataRow(
+                          key: ValueKey(setor.id),
+                          cells: [
+                            DataCell(Text(setor.nome)),
+                            DataCell(
+                              SizedBox(
+                                width: 240,
+                                child: Text(
+                                  setor.endereco?.isNotEmpty == true
+                                      ? setor.endereco!
+                                      : '—',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              DataCell(
-                                Text(
-                                  setor.raioMetros == null
-                                      ? '—'
-                                      : '${setor.raioMetros!.toStringAsFixed(2)} m',
-                                ),
+                            ),
+                            DataCell(
+                              Text(
+                                setor.raioMetros == null
+                                    ? '—'
+                                    : '${setor.raioMetros!.toStringAsFixed(2)} m',
                               ),
-                              DataCell(
-                                SizedBox(
-                                  width: 250,
-                                  child: Wrap(
-                                    spacing: 6,
-                                    runSpacing: 4,
-                                    children: [
-                                      if (setor.exigeSelfie)
-                                        const Chip(label: Text('Selfie')),
-                                      Chip(
-                                        label: Text(
-                                          setor.ignorarLocalizacao
-                                              ? 'Localização dispensada'
-                                              : setor.acaoForaPerimetro ==
-                                                    'PENDENTE'
-                                              ? 'Fora: pendente'
-                                              : 'Fora: bloquear',
-                                        ),
-                                      ),
-                                      if (!setor.ativo)
-                                        const Chip(label: Text('Inativo')),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
+                            ),
+                            DataCell(
+                              SizedBox(
+                                width: 250,
+                                child: Wrap(
+                                  spacing: 6,
+                                  runSpacing: 4,
                                   children: [
-                                    IconButton(
-                                      key: Key('editar-setor-${setor.id}'),
-                                      tooltip: setor.possuiPerimetro
-                                          ? 'Editar setor'
-                                          : 'Detalhes indisponíveis',
-                                      onPressed:
-                                          enabled && setor.possuiPerimetro
-                                          ? () => _formulario(setor)
-                                          : null,
-                                      icon: const Icon(Icons.edit_outlined),
+                                    if (setor.exigeSelfie)
+                                      const Chip(label: Text('Selfie')),
+                                    Chip(
+                                      label: Text(
+                                        setor.ignorarLocalizacao
+                                            ? 'Localização dispensada'
+                                            : setor.acaoForaPerimetro ==
+                                                  'PENDENTE'
+                                            ? 'Fora: pendente'
+                                            : 'Fora: bloquear',
+                                      ),
                                     ),
-                                    IconButton(
-                                      key: Key('remover-setor-${setor.id}'),
-                                      tooltip: 'Remover setor',
-                                      onPressed: enabled
-                                          ? () => _remover(setor)
-                                          : null,
-                                      icon: _removendo == setor.id
-                                          ? const SizedBox(
-                                              width: 20,
-                                              height: 20,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                              ),
-                                            )
-                                          : const Icon(Icons.delete_outline),
-                                    ),
+                                    if (!setor.ativo)
+                                      const Chip(label: Text('Inativo')),
                                   ],
                                 ),
                               ),
-                            ],
-                          ),
-                      ],
-                    ),
+                            ),
+                            DataCell(
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    key: Key('editar-setor-${setor.id}'),
+                                    tooltip: setor.possuiPerimetro
+                                        ? 'Editar setor'
+                                        : 'Detalhes indisponíveis',
+                                    onPressed: enabled && setor.possuiPerimetro
+                                        ? () => _formulario(setor)
+                                        : null,
+                                    icon: const Icon(Icons.edit_outlined),
+                                  ),
+                                  IconButton(
+                                    key: Key('remover-setor-${setor.id}'),
+                                    tooltip: 'Remover setor',
+                                    onPressed: enabled
+                                        ? () => _remover(setor)
+                                        : null,
+                                    icon: _removendo == setor.id
+                                        ? const SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : const Icon(Icons.delete_outline),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
                   ),
                 ),
               ),

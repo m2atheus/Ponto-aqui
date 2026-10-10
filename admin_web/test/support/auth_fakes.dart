@@ -56,6 +56,15 @@ class AuthAdapter implements HttpClientAdapter {
     Future<void>? cancelFuture,
   ) async {
     requests.add(options);
+    if (statusCode == 200 && options.uri.path.endsWith('/escalas')) {
+      return ResponseBody.fromString(
+        jsonEncode({'escalas': []}),
+        200,
+        headers: {
+          Headers.contentTypeHeader: [Headers.jsonContentType],
+        },
+      );
+    }
     if (statusCode == 200 && options.uri.path.contains('/empresas')) {
       Map<String, dynamic> data;
       var code = 200;

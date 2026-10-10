@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../models/auth_session.dart';
 import '../../providers/auth_provider.dart';
-import '../../theme/app_theme.dart';
 import '../widgets/brand_logo.dart';
 
 class Sidebar extends ConsumerWidget {
@@ -15,6 +14,7 @@ class Sidebar extends ConsumerWidget {
     final session = ref.watch(authProvider).asData?.value;
     if (session == null) return const SizedBox.shrink();
     final role = session.user.role;
+    final colors = Theme.of(context).colorScheme;
     Widget item(String title, String path, IconData icon) => Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: ListTile(
@@ -34,21 +34,21 @@ class Sidebar extends ConsumerWidget {
       ),
     );
     return Material(
-      color: Colors.white,
+      color: colors.surface,
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Padding(
+            Padding(
               padding: EdgeInsets.fromLTRB(20, 18, 20, 18),
               child: Column(
                 children: [
-                  BrandLogo(),
-                  SizedBox(height: 6),
+                  const BrandLogo(),
+                  const SizedBox(height: 6),
                   Text(
                     'Painel Administrativo',
                     style: TextStyle(
-                      color: BrandColors.muted,
+                      color: colors.onSurfaceVariant,
                       fontSize: 12,
                       letterSpacing: 0.4,
                     ),
@@ -62,12 +62,12 @@ class Sidebar extends ConsumerWidget {
                 key: const PageStorageKey('admin-sidebar'),
                 padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
                 children: [
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.only(left: 16, bottom: 12),
                     child: Text(
                       'NAVEGAÇÃO',
                       style: TextStyle(
-                        color: BrandColors.muted,
+                        color: colors.onSurfaceVariant,
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 1.6,
@@ -110,7 +110,7 @@ class Sidebar extends ConsumerWidget {
                 children: [
                   CircleAvatar(
                     radius: 20,
-                    backgroundColor: BrandColors.mint,
+                    backgroundColor: colors.secondaryContainer,
                     child: Text(
                       session.user.name.trim().isEmpty
                           ? '?'
@@ -119,8 +119,8 @@ class Sidebar extends ConsumerWidget {
                                 .characters
                                 .first
                                 .toUpperCase(),
-                      style: const TextStyle(
-                        color: BrandColors.teal,
+                      style: TextStyle(
+                        color: colors.onSecondaryContainer,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -141,16 +141,16 @@ class Sidebar extends ConsumerWidget {
                         ),
                         Text(
                           role.apiValue,
-                          style: const TextStyle(
-                            color: BrandColors.muted,
+                          style: TextStyle(
+                            color: colors.onSurfaceVariant,
                             fontSize: 11,
                           ),
                         ),
                         if (session.isMock)
-                          const Text(
+                          Text(
                             'Sessão de teste',
                             style: TextStyle(
-                              color: BrandColors.warning,
+                              color: colors.tertiary,
                               fontSize: 11,
                             ),
                           ),

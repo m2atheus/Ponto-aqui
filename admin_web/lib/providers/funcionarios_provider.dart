@@ -8,6 +8,9 @@ import '../repositories/funcionario_repository.dart';
 import '../repositories/repository_failure.dart';
 import 'api_providers.dart';
 import 'auth_provider.dart';
+import 'alocacoes_provider.dart';
+import 'dashboard_provider.dart';
+import 'w06_provider.dart';
 
 AuthSession _requireRh(AuthSession? session) {
   if (session == null ||
@@ -77,6 +80,9 @@ class FuncionariosController extends AsyncNotifier<List<Funcionario>> {
         if (!rows.any((row) => row.id == saved.id)) saved,
       ]),
     );
+    ref.invalidate(alocacoesProvider);
+    ref.invalidate(dashboardProvider);
+    ref.invalidate(w06Provider);
   }
 
   Future<void> salvar(Funcionario dto) => _mutate(
@@ -85,4 +91,10 @@ class FuncionariosController extends AsyncNotifier<List<Funcionario>> {
   );
   Future<void> desativar(Funcionario dto) =>
       _mutate((repository) => repository.desativar(dto));
+
+  Future<void> reativar(String id) =>
+      _mutate((repository) => repository.reativarFuncionario(id));
+
+  Future<void> vincularAcessoApp(String id, String email, String senha) =>
+      _mutate((repository) => repository.vincularAcessoApp(id, email, senha));
 }

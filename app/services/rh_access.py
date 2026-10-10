@@ -16,14 +16,18 @@ class GestaoError(Exception):
 
 
 def executar_rh(usuario_id, empresa_id, operacao, session=None):
+    return executar_empresa(usuario_id, empresa_id, operacao, session, papeis=("RH",))
+
+
+def executar_empresa(usuario_id, empresa_id, operacao, session=None, *, papeis=("RH", "GESTOR")):
     session = session if session is not None else db.session
     try:
         payload, status = AuthService.me(usuario_id, {"empresa_id": empresa_id}, session=session)
         if status != 200:
             return payload, status
         perfil = payload["usuario"]
-        if perfil["papel"] != "RH" or perfil["empresa_id"] is None:
-            raise GestaoError("Acesso exclusivo do RH da empresa.", 403, "ACESSO_NEGADO")
+        if perfil["papel"] not in papeis or perfil["empresa_id"] is None:
+            raise GestaoError("Seu perfil não permite esta operação na empresa.", 403, "ACESSO_NEGADO")
         return operacao(session, uuid.UUID(perfil["empresa_id"]))
     except GestaoError as error:
         session.rollback()

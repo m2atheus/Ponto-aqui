@@ -67,16 +67,18 @@ class CheckScheduleConflictService:
         return turnos
 
     @staticmethod
-    def _projetar(session, empresa_id, escala, inicio, fim, zona):
+    def _projetar(session, empresa_id, escala, inicio, fim, zona, *, detalhar=False):
         if inicio > fim:
             return []
         turnos = CheckScheduleConflictService._turnos(session, empresa_id, escala)
         intervalos = []
+        metadados = {}
         if escala.modelo in (ModeloEscala.PLANTAO_12X36, ModeloEscala.PLANTAO_24X72):
             duracao_plantao = 720 if escala.modelo == ModeloEscala.PLANTAO_12X36 else 1440
             ancora_hora = turnos[0].hora_inicio
             ancora_minutos = ancora_hora.hour * 60 + ancora_hora.minute
             componentes = []
+            turnos_por_componente = {}
             for turno in turnos:
                 offset = (turno.hora_inicio.hour * 60 + turno.hora_inicio.minute - ancora_minutos) % 1440
                 duracao = TimeCalculator.calcular_duracao_turno(
@@ -88,6 +90,7 @@ class CheckScheduleConflictService:
                 if offset + duracao > duracao_plantao:
                     raise ValueError("Componente ultrapassa a duração do plantão cíclico.")
                 componentes.append((offset, offset + duracao))
+                turnos_por_componente[(offset, offset + duracao)] = turno
             componentes.sort()
             if max(f for _, f in componentes) != duracao_plantao:
                 raise ValueError("Os turnos devem cobrir o início e o término do plantão cíclico.")
@@ -106,8 +109,10 @@ class CheckScheduleConflictService:
                 # Vigência refere-se ao dia local de início, não à madrugada seguinte.
                 if inicio <= start.date() <= fim:
                     start = start.astimezone(timezone.utc)
-                    intervalos.extend((start + timedelta(minutes=a), start + timedelta(minutes=b))
-                                      for a, b in componentes)
+                    for a, b in componentes:
+                        par = (start + timedelta(minutes=a), start + timedelta(minutes=b))
+                        intervalos.append(par)
+                        metadados[par] = turnos_por_componente[(a, b)]
         else:
             for numero in range((fim - inicio).days + 1):
                 dia = inicio + timedelta(days=numero)
@@ -123,12 +128,17 @@ class CheckScheduleConflictService:
                     end = datetime.combine(dia_fim, turno.hora_fim, tzinfo=zona)
                     if any(v.utcoffset() != v.replace(fold=1).utcoffset() for v in (start, end)):
                         raise ValueError("Turno em horário local ambíguo ou inexistente.")
-                    intervalos.append((start.astimezone(timezone.utc), end.astimezone(timezone.utc)))
+                    par = (start.astimezone(timezone.utc), end.astimezone(timezone.utc))
+                    intervalos.append(par)
+                    metadados[par] = turno
         intervalos.sort()
         if any(a >= b for a, b in intervalos):
             raise ValueError("Turno com duração inválida.")
         if any(b > c for (_, b), (c, _) in zip(intervalos, intervalos[1:])):
             raise ValueError("Turnos da própria escala se sobrepõem.")
+        if detalhar:
+            return [{"inicio": a, "fim": b, "turno_id": str(metadados[(a, b)].id),
+                "tempo_intervalo": metadados[(a, b)].tempo_intervalo} for a, b in intervalos]
         return intervalos
 
     @staticmethod

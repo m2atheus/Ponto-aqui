@@ -358,7 +358,7 @@ void main() {
       app.api.writeGate!.complete();
       await tester.pumpAndSettle();
       expect(
-      app.container.read(alocacoesProvider).asData?.value.alocacoes,
+        app.container.read(alocacoesProvider).asData?.value.alocacoes,
         isEmpty,
       );
       expect(find.byType(DataTable), findsNothing);

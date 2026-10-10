@@ -1,18 +1,27 @@
 import 'package:flutter/material.dart';
 
-import '../../theme/app_theme.dart';
-
 class StatusBadge extends StatelessWidget {
   const StatusBadge({super.key, required this.ativo});
   final bool ativo;
 
   @override
   Widget build(BuildContext context) {
-    final color = ativo ? BrandColors.teal : BrandColors.muted;
+    final colors = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final color = ativo
+        ? colors.onSecondaryContainer
+        : dark
+        ? const Color(0xFFFCA5A5)
+        : const Color(0xFF9B2C2C);
+    final background = ativo
+        ? colors.secondaryContainer
+        : dark
+        ? const Color(0xFF3F1D1D)
+        : const Color(0xFFFDECEC);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: ativo ? BrandColors.mint : BrandColors.background,
+        color: background,
         borderRadius: BorderRadius.circular(24),
       ),
       child: Row(

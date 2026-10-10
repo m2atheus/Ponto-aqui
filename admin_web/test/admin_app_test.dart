@@ -5,10 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ponto_aqui_admin/app.dart';
 import 'package:ponto_aqui_admin/models/auth_session.dart';
-import 'package:ponto_aqui_admin/models/management_mock.dart';
 import 'package:ponto_aqui_admin/providers/api_providers.dart';
 import 'package:ponto_aqui_admin/providers/auth_provider.dart';
-import 'package:ponto_aqui_admin/providers/management_mock_provider.dart';
 import 'package:ponto_aqui_admin/providers/empresas_provider.dart';
 import 'package:ponto_aqui_admin/router/app_router.dart';
 import 'package:ponto_aqui_admin/services/api/dio_client.dart';
@@ -75,6 +73,63 @@ Future<void> _login(
 }
 
 void main() {
+  testWidgets('Drawer abaixo de 800 navega e redimensiona preservando a rota', (
+    tester,
+  ) async {
+    final app = await _mount(
+      tester,
+      role: UserRole.rh,
+      size: const Size(799, 760),
+    );
+    final shell = tester.element(find.byType(AdminScaffold));
+    final scaffoldFinder = find.descendant(
+      of: find.byType(AdminScaffold),
+      matching: find.byType(Scaffold),
+    );
+    expect(tester.widget<Scaffold>(scaffoldFinder).drawer, isNotNull);
+    await tester.tap(find.byTooltip('Abrir menu'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(ListTile, 'Empresas'), findsNothing);
+    await tester.tap(find.widgetWithText(ListTile, 'Setores'));
+    await tester.pumpAndSettle();
+    expect(app.router.routeInformationProvider.value.uri.path, '/setores');
+    expect(tester.state<ScaffoldState>(scaffoldFinder).isDrawerOpen, isFalse);
+    expect(tester.element(find.byType(AdminScaffold)), same(shell));
+
+    tester.view.physicalSize = const Size(800, 760);
+    await tester.pumpAndSettle();
+    expect(tester.widget<Scaffold>(scaffoldFinder).drawer, isNull);
+    expect(find.byTooltip('Abrir menu'), findsNothing);
+    expect(find.widgetWithText(ListTile, 'Setores'), findsOneWidget);
+    expect(app.router.routeInformationProvider.value.uri.path, '/setores');
+
+    tester.view.physicalSize = const Size(320, 760);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Abrir menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, 'Dashboard'));
+    await tester.pumpAndSettle();
+    expect(app.router.routeInformationProvider.value.uri.path, '/dashboard');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('cards do RH ficam empilhados e com largura útil no celular', (
+    tester,
+  ) async {
+    await _mount(tester, role: UserRole.rh, size: const Size(320, 760));
+    Rect card(String titulo) => tester.getRect(
+      find.ancestor(of: find.text(titulo), matching: find.byType(Card)).first,
+    );
+    final funcionarios = card('Total de Funcionários');
+    final setores = card('Total de Setores');
+    final escalas = card('Escalas Ativas');
+    expect(funcionarios.width, closeTo(272, 0.1));
+    expect(setores.left, funcionarios.left);
+    expect(setores.top, greaterThanOrEqualTo(funcionarios.bottom + 16));
+    expect(escalas.top, greaterThanOrEqualTo(setores.bottom + 16));
+    expect(tester.takeException(), isNull);
+  });
+
   for (final size in [const Size(320, 760), const Size(1024, 768)]) {
     testWidgets('login com a marca funciona em ${size.width}px', (
       tester,
@@ -330,71 +385,6 @@ void main() {
     );
   });
 
-  testWidgets('Escalas valida horário e dias, edita e remove com confirmação', (
-    tester,
-  ) async {
-    final app = await _mount(tester, role: UserRole.rh);
-    app.router.go('/escalas');
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Nova Escala'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('escala-nome')), 'Noturna');
-    await tester.enterText(find.byKey(const Key('escala-entrada')), '25:00');
-    for (var day = 1; day <= 5; day++) {
-      await tester.tap(find.byKey(Key('dia-$day')));
-    }
-    await tester.tap(find.text('Salvar'));
-    await tester.pumpAndSettle();
-    expect(find.text('Use HH:mm entre 00:00 e 23:59.'), findsOneWidget);
-    expect(find.text('Selecione ao menos um dia.'), findsOneWidget);
-    await tester.enterText(find.byKey(const Key('escala-entrada')), '22:00');
-    await tester.enterText(find.byKey(const Key('escala-saida')), '06:00');
-    await tester.tap(find.byKey(const Key('dia-7')));
-    await tester.tap(find.text('Salvar'));
-    await tester.pumpAndSettle();
-    expect(find.text('06:00 (+1 dia)'), findsOneWidget);
-    expect(tester.widget<DataTable>(find.byType(DataTable)).rows, hasLength(3));
-    app.router.go('/dashboard');
-    await tester.pumpAndSettle();
-    expect(find.text('3'), findsOneWidget);
-    app.router.go('/escalas');
-    await tester.pumpAndSettle();
-    final edit = find.byKey(const Key('editar-escala-escala-3'));
-    await tester.ensureVisible(edit);
-    await tester.tap(edit);
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('escala-nome')), 'Comercial');
-    await tester.tap(find.text('Salvar'));
-    await tester.pumpAndSettle();
-    expect(find.text('Nome de escala já cadastrado.'), findsOneWidget);
-    await tester.enterText(
-      find.byKey(const Key('escala-nome')),
-      'Noturna Revisada',
-    );
-    await tester.tap(find.text('Escala ativa'));
-    await tester.tap(find.text('Salvar'));
-    await tester.pumpAndSettle();
-    app.router.go('/dashboard');
-    await tester.pumpAndSettle();
-    expect(find.text('2'), findsOneWidget);
-    app.router.go('/escalas');
-    await tester.pumpAndSettle();
-    final remove = find.byKey(const Key('remover-escala-escala-3'));
-    await tester.ensureVisible(remove);
-    await tester.tap(remove);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Cancelar'));
-    await tester.pumpAndSettle();
-    expect(find.text('Noturna Revisada'), findsOneWidget);
-    await tester.tap(remove);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Remover'));
-    await tester.pumpAndSettle();
-    expect(find.text('Noturna Revisada'), findsNothing);
-    expect(tester.widget<DataTable>(find.byType(DataTable)).rows, hasLength(2));
-    expect(tester.takeException(), isNull);
-  });
-
   for (final role in [UserRole.superadmin, UserRole.rh]) {
     testWidgets('Tabela e formulário de ${role.name} cabem em tela estreita', (
       tester,
@@ -402,7 +392,10 @@ void main() {
       final app = await _mount(tester, role: role, size: const Size(320, 568));
       app.router.go(role == UserRole.superadmin ? '/empresas' : '/escalas');
       await tester.pumpAndSettle();
-      expect(find.byType(DataTable), findsOneWidget);
+      expect(
+        find.byType(DataTable),
+        role == UserRole.superadmin ? findsOneWidget : findsNothing,
+      );
       await tester.tap(
         find.text(role == UserRole.superadmin ? 'Nova Empresa' : 'Nova Escala'),
       );
@@ -415,53 +408,6 @@ void main() {
     });
   }
 
-  testWidgets('Troca de empresa descarta escalas da sessão anterior', (
-    tester,
-  ) async {
-    final app = await _mount(tester, role: UserRole.rh);
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(AdminApp)),
-    );
-    final notifier = container.read(escalasMockProvider.notifier);
-    final first = container.read(escalasMockProvider).first;
-    notifier.salvar(
-      EscalaMock(
-        id: '',
-        empresaId: first.empresaId,
-        nome: 'Exclusiva da Empresa A',
-        entradaMinutos: 600,
-        saidaMinutos: 1080,
-        diasSemana: {2},
-      ),
-    );
-    expect(container.read(escalasMockProvider), hasLength(3));
-    app.adapter.response = {
-      'access_token': sessionFor(UserRole.rh).accessToken,
-      'usuario': {
-        ...sessionFor(UserRole.rh).user.toJson(),
-        'id': 'usuario-2',
-        'empresa_id': 'empresa-2',
-        'email': 'rh2@empresa.com',
-      },
-    };
-    await tester.runAsync(
-      () => container
-          .read(authProvider.notifier)
-          .login('rh2@empresa.com', 'senha'),
-    );
-    await tester.pumpAndSettle();
-    final escalas = container.read(escalasMockProvider);
-    expect(escalas, hasLength(2));
-    expect(escalas.every((escala) => escala.empresaId == 'empresa-2'), isTrue);
-    expect(
-      escalas.any((escala) => escala.nome == 'Exclusiva da Empresa A'),
-      isFalse,
-    );
-    expect(
-      () => container.read(escalasMockProvider.notifier).remover(first),
-      throwsStateError,
-    );
-  });
   testWidgets('visitante faz login mock, persiste sessão e encerra acesso', (
     tester,
   ) async {

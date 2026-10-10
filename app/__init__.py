@@ -53,6 +53,7 @@ def create_app(config: dict | None = None) -> Flask:
         JWT_ACCESS_TOKEN_EXPIRES=timedelta(minutes=30),
         JWT_REFRESH_TOKEN_EXPIRES=timedelta(days=7),
         MAX_CONTENT_LENGTH=5 * 1024 * 1024,
+        MAX_ATTACHMENT_CONTENT_LENGTH=12 * 1024 * 1024,
         PONTO_MAX_LOTE=500,
         SUPABASE_URL=os.getenv("SUPABASE_URL", ""),
         SUPABASE_KEY=os.getenv("SUPABASE_KEY", ""),
@@ -89,12 +90,16 @@ def create_app(config: dict | None = None) -> Flask:
     from .routes.mobile_routes import mobile_bp, mobile_v1_bp
     from .routes.web_routes import web_bp
     from .routes.auth_routes import auth_bp
+    from .routes.admin_routes import admin_bp
+    from .routes.funcionario_routes import funcionario_bp
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(auth_bp, url_prefix="/api/web/auth", name="auth_web")
     app.register_blueprint(auth_bp, url_prefix="/api/mobile/auth", name="auth_mobile")
     app.register_blueprint(web_bp, url_prefix="/api/web")
     app.register_blueprint(mobile_bp, url_prefix="/api/mobile")
     app.register_blueprint(mobile_v1_bp, url_prefix="/api/v1/mobile")
+    app.register_blueprint(admin_bp, url_prefix="/api/v1/admin")
+    app.register_blueprint(funcionario_bp, url_prefix="/api/v1/funcionarios")
     from .commands import registrar_comandos
     registrar_comandos(app)
     # A página inicial usa o mesmo handler modular de /api/web/.

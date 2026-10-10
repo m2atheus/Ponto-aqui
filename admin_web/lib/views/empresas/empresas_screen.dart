@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../widgets/responsive_table_container.dart';
+
 import '../../models/auth_session.dart';
 import '../../models/empresa.dart';
 import '../../providers/auth_provider.dart';
@@ -155,57 +157,52 @@ class _EmpresasScreenState extends ConsumerState<EmpresasScreen> {
               ),
             ),
           Card(
-            child: Scrollbar(
+            child: ResponsiveTableContainer(
               controller: _scroll,
-              thumbVisibility: true,
-              child: SingleChildScrollView(
-                controller: _scroll,
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.only(bottom: 12),
-                child: DataTable(
-                  columns: const [
-                    DataColumn(label: Text('Razão Social')),
-                    DataColumn(label: Text('CNPJ')),
-                    DataColumn(label: Text('Administrador/RH')),
-                    DataColumn(label: Text('Status')),
-                    DataColumn(label: Text('Ações')),
-                  ],
-                  rows: [
-                    for (final empresa in empresas)
-                      DataRow(
-                        key: ValueKey(empresa.id),
-                        cells: [
-                          DataCell(Text(empresa.razaoSocial)),
-                          DataCell(Text(empresa.cnpjFormatado)),
-                          DataCell(Text(empresa.adminEmail)),
-                          DataCell(StatusBadge(ativo: empresa.ativa)),
-                          DataCell(
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  key: Key('editar-empresa-${empresa.id}'),
-                                  tooltip: 'Editar ${empresa.razaoSocial}',
-                                  icon: const Icon(Icons.edit_outlined),
-                                  onPressed: podeGravar
-                                      ? () => _formulario(empresa)
-                                      : null,
-                                ),
-                                IconButton(
-                                  key: Key('desativar-empresa-${empresa.id}'),
-                                  tooltip: 'Desativar ${empresa.razaoSocial}',
-                                  icon: const Icon(Icons.block),
-                                  onPressed: empresa.ativa && podeGravar
-                                      ? () => _desativar(empresa)
-                                      : null,
-                                ),
-                              ],
-                            ),
+              padding: const EdgeInsets.only(bottom: 12),
+              child: DataTable(
+                columns: const [
+                  DataColumn(label: Text('Razão Social')),
+                  DataColumn(label: Text('CNPJ')),
+                  DataColumn(label: Text('Administrador/RH')),
+                  DataColumn(label: Text('Status')),
+                  DataColumn(label: Text('Ações')),
+                ],
+                rows: [
+                  for (final empresa in empresas)
+                    DataRow(
+                      key: ValueKey(empresa.id),
+                      cells: [
+                        DataCell(Text(empresa.razaoSocial)),
+                        DataCell(Text(empresa.cnpjFormatado)),
+                        DataCell(Text(empresa.adminEmail)),
+                        DataCell(StatusBadge(ativo: empresa.ativa)),
+                        DataCell(
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                key: Key('editar-empresa-${empresa.id}'),
+                                tooltip: 'Editar ${empresa.razaoSocial}',
+                                icon: const Icon(Icons.edit_outlined),
+                                onPressed: podeGravar
+                                    ? () => _formulario(empresa)
+                                    : null,
+                              ),
+                              IconButton(
+                                key: Key('desativar-empresa-${empresa.id}'),
+                                tooltip: 'Desativar ${empresa.razaoSocial}',
+                                icon: const Icon(Icons.block),
+                                onPressed: empresa.ativa && podeGravar
+                                    ? () => _desativar(empresa)
+                                    : null,
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                  ],
-                ),
+                        ),
+                      ],
+                    ),
+                ],
               ),
             ),
           ),

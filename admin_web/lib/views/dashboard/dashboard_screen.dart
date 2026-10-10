@@ -1,12 +1,10 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../models/auth_session.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/management_mock_provider.dart';
+import '../../providers/dashboard_provider.dart';
 import '../../providers/empresas_provider.dart';
 import '../../theme/app_theme.dart';
 
@@ -32,33 +30,31 @@ class DashboardScreen extends ConsumerWidget {
           ),
         ];
       case UserRole.rh:
-        const totalFuncionarios = 42;
-        const totalSetores = 6;
-        final escalasAtivas = ref
-            .watch(escalasMockProvider)
-            .where((escala) => escala.ativa)
-            .length;
+        final indicadores = ref.watch(dashboardProvider).asData?.value;
         cards = [
-          const _ResumoCard(
+          _ResumoCard(
             titulo: 'Total de Funcionários',
-            valor: totalFuncionarios,
+            valor: indicadores?['funcionarios'],
             icone: Icons.people_outline,
           ),
-          const _ResumoCard(
+          _ResumoCard(
             titulo: 'Total de Setores',
-            valor: totalSetores,
+            valor: indicadores?['setores'],
             icone: Icons.location_on_outlined,
           ),
           _ResumoCard(
             titulo: 'Escalas Ativas',
-            valor: escalasAtivas,
+            valor: indicadores?['escalas_ativas'],
             icone: Icons.calendar_month_outlined,
           ),
         ];
       case UserRole.gestor:
-        const justificativasPendentes = 5;
+        final justificativasPendentes = ref
+            .watch(dashboardProvider)
+            .asData
+            ?.value['justificativas_pendentes'];
         cards = [
-          const _ResumoCard(
+          _ResumoCard(
             titulo: 'Justificativas Pendentes de Aprovação',
             valor: justificativasPendentes,
             icone: Icons.pending_actions,
@@ -85,8 +81,11 @@ class DashboardScreen extends ConsumerWidget {
               Text(
                 session.user.role == UserRole.superadmin
                     ? 'Total de empresas consultado no banco.'
-                    : 'Dados de demonstração.',
-                style: const TextStyle(color: BrandColors.muted, fontSize: 12),
+                    : 'Indicadores consultados no banco.',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
               ),
               if (session.user.role == UserRole.superadmin &&
                   ref.watch(empresasProvider).hasError)
@@ -94,10 +93,29 @@ class DashboardScreen extends ConsumerWidget {
                   ref.watch(empresasProvider).error.toString(),
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
+              if (session.user.role != UserRole.superadmin &&
+                  ref.watch(dashboardProvider).hasError)
+                Text(
+                  ref.watch(dashboardProvider).error.toString(),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              OutlinedButton.icon(
+                onPressed: () => session.user.role == UserRole.superadmin
+                    ? ref.invalidate(empresasProvider)
+                    : ref.invalidate(dashboardProvider),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Atualizar indicadores'),
+              ),
               const SizedBox(height: 24),
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final width = math.min(340.0, constraints.maxWidth);
+                  final availableWidth = constraints.maxWidth;
+                  final columns = availableWidth < 600
+                      ? 1
+                      : availableWidth < 1000
+                      ? 2
+                      : 3;
+                  final width = (availableWidth - (columns - 1) * 16) / columns;
                   return Wrap(
                     spacing: 16,
                     runSpacing: 16,
@@ -126,26 +144,34 @@ class DashboardScreen extends ConsumerWidget {
                       color: Color(0xFF77DED4),
                       size: 32,
                     ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Olá, ${session.user.name.split(' ').first}.',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w600,
-                          ),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: (MediaQuery.sizeOf(context).width - 96).clamp(
+                          0.0,
+                          1000.0,
                         ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Acompanhe sua operação pelo menu ao lado.',
-                          style: TextStyle(
-                            color: Color(0xFFC5DEE7),
-                            fontSize: 13,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Olá, ${session.user.name.split(' ').first}.',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Acompanhe sua operação pelo menu de navegação.',
+                            style: TextStyle(
+                              color: Color(0xFFC5DEE7),
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -182,13 +208,17 @@ class _ResumoCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: alerta ? BrandColors.warningSurface : BrandColors.mint,
+              color: alerta
+                  ? Theme.of(context).colorScheme.tertiaryContainer
+                  : Theme.of(context).colorScheme.secondaryContainer,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               icone,
               size: 24,
-              color: alerta ? BrandColors.warning : BrandColors.teal,
+              color: alerta
+                  ? Theme.of(context).colorScheme.onTertiaryContainer
+                  : Theme.of(context).colorScheme.onSecondaryContainer,
             ),
           ),
           const SizedBox(height: 16),
@@ -198,7 +228,9 @@ class _ResumoCard extends StatelessWidget {
             valor == null ? '—' : '$valor',
             style: Theme.of(context).textTheme.displaySmall?.copyWith(
               fontWeight: FontWeight.w700,
-              color: alerta ? BrandColors.warning : BrandColors.navy,
+              color: alerta
+                  ? Theme.of(context).colorScheme.onTertiaryContainer
+                  : Theme.of(context).colorScheme.primary,
             ),
           ),
           if (acao != null) ...[const SizedBox(height: 20), acao!],
