@@ -2,7 +2,7 @@
 
 import re
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import or_, select
 
@@ -30,6 +30,40 @@ def _data(value, campo):
 
 
 class AlocacaoService:
+    @staticmethod
+    def trocar(usuario_id, empresa_id, alvo_id, dados, session=None):
+        """Encerra a origem e cria o destino na MESMA transação (datas inclusivas)."""
+        def operacao(session, empresa):
+            if (not isinstance(dados, dict) or dados.keys() - {"setor_id", "escala_id", "data_inicio", "data_fim"}
+                    or not {"setor_id", "data_inicio"} <= dados.keys()):
+                raise GestaoError("Informe setor e início da nova alocação, sem alterar o funcionário.")
+            alvo = _uuid(alvo_id, "alocacao_id")
+            inicio = _data(dados["data_inicio"], "data_inicio")
+            funcionario_id = session.scalar(select(Alocacoes.funcionario_id).where(
+                Alocacoes.id == alvo, Alocacoes.empresa_id == empresa))
+            if funcionario_id is None:
+                raise GestaoError("Alocação não encontrada nesta empresa.", 404, "ALOCACAO_NAO_ENCONTRADA")
+            session.scalar(select(Funcionarios.id).where(Funcionarios.id == funcionario_id,
+                Funcionarios.empresa_id == empresa).with_for_update())
+            antiga = session.scalar(select(Alocacoes).where(Alocacoes.id == alvo,
+                Alocacoes.empresa_id == empresa).with_for_update().execution_options(populate_existing=True))
+            if antiga is None:
+                raise GestaoError("Alocação não encontrada nesta empresa.", 404, "ALOCACAO_NAO_ENCONTRADA")
+            if antiga.data_fim is not None:
+                raise GestaoError("Esta alocação já está encerrada.", 409, "ALOCACAO_ENCERRADA")
+            if inicio <= antiga.data_inicio:
+                raise GestaoError("A troca deve começar depois do início da alocação anterior.")
+            # Nenhum ID, setor, escala, funcionário ou data_inicio é sobrescrito.
+            antiga.data_fim = inicio - timedelta(days=1)
+            session.flush()
+            nova = AlocacaoService._nova_alocacao(session, empresa, {
+                "funcionario_id": str(funcionario_id), **dados})
+            result = {"alocacao_anterior": AlocacaoService._json(antiga),
+                "alocacao": AlocacaoService._json(nova)}
+            session.commit()
+            return result, 201
+        return executar_rh(usuario_id, empresa_id, operacao, session)
+
     @staticmethod
     def _json(row):
         return {
@@ -66,51 +100,56 @@ class AlocacaoService:
             )
 
     @staticmethod
+    def _nova_alocacao(session, empresa, dados):
+        campos = {"funcionario_id", "setor_id", "data_inicio", "data_fim", "escala_id"}
+        if (not isinstance(dados, dict) or dados.keys() - campos
+                or not {"funcionario_id", "setor_id", "data_inicio"} <= dados.keys()):
+            raise GestaoError("Informe funcionário, setor e data de início, sem campos desconhecidos.")
+        funcionario_id = _uuid(dados["funcionario_id"], "funcionario_id")
+        setor_id = _uuid(dados["setor_id"], "setor_id")
+        inicio = _data(dados["data_inicio"], "data_inicio")
+        fim = _data(dados["data_fim"], "data_fim") if dados.get("data_fim") is not None else None
+        if fim is not None and fim < inicio:
+            raise GestaoError("A data final não pode ser anterior à inicial.")
+        # Serializa criações e encerramentos do mesmo funcionário. A
+        # exclusion constraint também protege contra outros escritores.
+        funcionario = session.scalar(select(Funcionarios).where(
+            Funcionarios.id == funcionario_id, Funcionarios.empresa_id == empresa,
+            Funcionarios.ativo.is_(True),
+        ).with_for_update())
+        setor = session.scalar(select(Setores).where(
+            Setores.id == setor_id, Setores.empresa_id == empresa, Setores.ativo.is_(True),
+        ))
+        if funcionario is None or setor is None:
+            raise GestaoError("Funcionário ou setor não está ativo nesta empresa.", 404, "VINCULO_NAO_ENCONTRADO")
+        AlocacaoService._sobreposicao(session, empresa, funcionario_id, setor_id, inicio, fim)
+        escala_id = _uuid(dados["escala_id"], "escala_id") if dados.get("escala_id") is not None else None
+        if escala_id is not None:
+            escala = session.scalar(select(Escalas.id).where(
+                Escalas.id == escala_id, Escalas.empresa_id == empresa, Escalas.ativo.is_(True),
+            ))
+            if escala is None:
+                raise GestaoError("Escala não encontrada nesta empresa.", 404, "ESCALA_NAO_ENCONTRADA")
+            if funcionario.usuario_id is None:
+                raise GestaoError("O funcionário precisa de uma conta vinculada para validar sua escala.")
+            payload, status = CheckScheduleConflictService.validar_alocacao(
+                empresa, funcionario.usuario_id, escala_id, inicio.isoformat(),
+                fim.isoformat() if fim else None, session=session,
+            )
+            if status != 200:
+                error = payload["erro"]
+                raise GestaoError(error["mensagem"], status, error["codigo"], error.get("detalhes"))
+        row = Alocacoes(empresa_id=empresa, funcionario_id=funcionario.id,
+            usuario_id=funcionario.usuario_id, setor_id=setor.id, escala_id=escala_id,
+            data_inicio=inicio, data_fim=fim)
+        session.add(row)
+        session.flush()
+        return row
+
+    @staticmethod
     def criar(usuario_id, empresa_id, dados, session=None):
         def operacao(session, empresa):
-            campos = {"funcionario_id", "setor_id", "data_inicio", "data_fim", "escala_id"}
-            if (not isinstance(dados, dict) or dados.keys() - campos
-                    or not {"funcionario_id", "setor_id", "data_inicio"} <= dados.keys()):
-                raise GestaoError("Informe funcionário, setor e data de início, sem campos desconhecidos.")
-            funcionario_id = _uuid(dados["funcionario_id"], "funcionario_id")
-            setor_id = _uuid(dados["setor_id"], "setor_id")
-            inicio = _data(dados["data_inicio"], "data_inicio")
-            fim = _data(dados["data_fim"], "data_fim") if dados.get("data_fim") is not None else None
-            if fim is not None and fim < inicio:
-                raise GestaoError("A data final não pode ser anterior à inicial.")
-            # Serializa criações e encerramentos do mesmo funcionário. A
-            # exclusion constraint também protege contra outros escritores.
-            funcionario = session.scalar(select(Funcionarios).where(
-                Funcionarios.id == funcionario_id, Funcionarios.empresa_id == empresa,
-                Funcionarios.ativo.is_(True),
-            ).with_for_update())
-            setor = session.scalar(select(Setores).where(
-                Setores.id == setor_id, Setores.empresa_id == empresa, Setores.ativo.is_(True),
-            ))
-            if funcionario is None or setor is None:
-                raise GestaoError("Funcionário ou setor não está ativo nesta empresa.", 404, "VINCULO_NAO_ENCONTRADO")
-            AlocacaoService._sobreposicao(session, empresa, funcionario_id, setor_id, inicio, fim)
-            escala_id = _uuid(dados["escala_id"], "escala_id") if dados.get("escala_id") is not None else None
-            if escala_id is not None:
-                escala = session.scalar(select(Escalas.id).where(
-                    Escalas.id == escala_id, Escalas.empresa_id == empresa, Escalas.ativo.is_(True),
-                ))
-                if escala is None:
-                    raise GestaoError("Escala não encontrada nesta empresa.", 404, "ESCALA_NAO_ENCONTRADA")
-                if funcionario.usuario_id is None:
-                    raise GestaoError("O funcionário precisa de uma conta vinculada para validar sua escala.")
-                payload, status = CheckScheduleConflictService.validar_alocacao(
-                    empresa, funcionario.usuario_id, escala_id, inicio.isoformat(),
-                    fim.isoformat() if fim else None, session=session,
-                )
-                if status != 200:
-                    error = payload["erro"]
-                    raise GestaoError(error["mensagem"], status, error["codigo"], error.get("detalhes"))
-            row = Alocacoes(empresa_id=empresa, funcionario_id=funcionario.id,
-                usuario_id=funcionario.usuario_id, setor_id=setor.id, escala_id=escala_id,
-                data_inicio=inicio, data_fim=fim)
-            session.add(row)
-            session.flush()
+            row = AlocacaoService._nova_alocacao(session, empresa, dados)
             result = AlocacaoService._json(row)
             session.commit()
             return {"alocacao": result}, 201

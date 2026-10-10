@@ -7,6 +7,8 @@ import '../models/setor.dart';
 import '../repositories/repository_failure.dart';
 import 'alocacoes_provider.dart';
 import 'auth_provider.dart';
+import 'dashboard_provider.dart';
+import 'w06_provider.dart';
 
 // Permite testes do mapa sem acessar servidores de tiles.
 final setorTileProviderFactoryProvider = Provider<TileProvider Function()>(
@@ -68,6 +70,8 @@ class SetoresController extends AsyncNotifier<List<Setor>> {
     ]..sort((a, b) => a.nome.compareTo(b.nome));
     state = AsyncData(List.unmodifiable(updated));
     ref.invalidate(alocacoesProvider);
+    ref.invalidate(dashboardProvider);
+    ref.invalidate(w06Provider);
   }
 
   Future<void> remover(Setor dto) async {
@@ -80,5 +84,7 @@ class SetoresController extends AsyncNotifier<List<Setor>> {
       ),
     );
     ref.invalidate(alocacoesProvider);
+    ref.invalidate(dashboardProvider);
+    ref.invalidate(w06Provider);
   }
 }

@@ -56,6 +56,25 @@ class ManagementApiFake implements HttpClientAdapter {
   final alocacoes = [alocacaoJson()];
   Map<String, dynamic> get alocacao => alocacoes.first;
   final setores = <Map<String, dynamic>>[setorJson()];
+  final escalas = <Map<String, dynamic>>[
+    {
+      'id': 'escala-1',
+      'empresa_id': 'empresa-1',
+      'nome': 'Comercial',
+      'ativo': true,
+      'modelo': '5x2',
+      'data_referencia': null,
+      'turnos': [
+        {
+          'hora_inicio': '08:00',
+          'hora_fim': '17:00',
+          'tempo_intervalo': 60,
+          'dias_semana': [1, 2, 3, 4, 5],
+          'fim_dia_seguinte': false,
+        },
+      ],
+    },
+  ];
   int? nextStatus;
   Object? nextBody;
   Completer<void>? writeGate;
@@ -72,6 +91,17 @@ class ManagementApiFake implements HttpClientAdapter {
     if (options.uri.path.endsWith('/auth/me')) {
       return jsonResponse({'usuario': sessionFor(UserRole.rh).user.toJson()});
     }
+    if (options.uri.path.endsWith('/dashboard')) {
+      return jsonResponse({
+        'empresa_id': 'empresa-1',
+        'indicadores': {
+          'funcionarios': funcionarios.length,
+          'setores': setores.length,
+          'escalas_ativas': escalas.where((e) => e['ativo'] == true).length,
+          'justificativas_pendentes': 0,
+        },
+      });
+    }
     if (options.method != 'GET') await writeGate?.future;
     if (nextStatus != null) {
       final status = nextStatus!;
@@ -79,6 +109,52 @@ class ManagementApiFake implements HttpClientAdapter {
       nextStatus = null;
       nextBody = null;
       return jsonResponse(body, status);
+    }
+    if (options.uri.path.contains('/escalas')) {
+      if (options.method == 'GET') return jsonResponse({'escalas': escalas});
+      if (options.method == 'DELETE') {
+        final id = options.uri.pathSegments.last;
+        escalas.removeWhere((e) => e['id'] == id);
+        return jsonResponse({'id': id, 'removido': true});
+      }
+      final values = Map<String, dynamic>.from(options.data as Map);
+      if (options.method == 'POST') {
+        final row = {
+          ...values,
+          'id': 'escala-${escalas.length + 1}',
+          'empresa_id': 'empresa-1',
+        };
+        escalas.add(row);
+        return jsonResponse({'escala': row}, 201);
+      }
+      final row = escalas.firstWhere(
+        (e) => e['id'] == options.uri.pathSegments.last,
+      )..addAll(values);
+      return jsonResponse({'escala': row});
+    }
+    if (options.uri.path.endsWith('/vincular-acesso') &&
+        options.method == 'POST') {
+      final id = options.uri.pathSegments[options.uri.pathSegments.length - 2];
+      final row = funcionarios.firstWhere((item) => item['id'] == id);
+      if (row['usuario_id'] != null) {
+        return jsonResponse({
+          'erro': {
+            'codigo': 'ACESSO_JA_VINCULADO',
+            'mensagem': 'O funcionário já possui uma conta vinculada.',
+          },
+        }, 400);
+      }
+      row['usuario_id'] = 'conta-$id';
+      return jsonResponse({
+        'funcionario': row,
+        'usuario': {
+          'id': row['usuario_id'],
+          'nome': row['nome'],
+          'email': (options.data as Map)['email'],
+          'papel': 'FUNCIONARIO',
+          'empresa_id': row['empresa_id'],
+        },
+      }, 201);
     }
     if (options.uri.path.contains('/funcionarios')) {
       if (options.method == 'GET') {

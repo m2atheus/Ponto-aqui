@@ -34,8 +34,19 @@
   <title>Ponto Aqui — Administração</title>
   <link rel="manifest" href="manifest.json">
   <style>
-    html, body { margin: 0; background: #F3F7F9; }
+    html { --admin-background: #F3F7F9; color-scheme: light; }
+    html[data-theme="dark"] { --admin-background: #15191D; color-scheme: dark; }
+    html, body { margin: 0; background: var(--admin-background); }
   </style>
+  <script>
+    // SharedPreferencesAsync Web guarda a string como JSON, sem prefixo.
+    // Define o fundo antes da primeira pintura e do carregamento do Flutter.
+    try {
+      if (JSON.parse(localStorage.getItem('ponto_aqui_theme')) === 'dark') {
+        document.documentElement.dataset.theme = 'dark';
+      }
+    } catch (_) { /* Usa o tema claro quando o armazenamento estiver bloqueado. */ }
+  </script>
 </head>
 <body>
   <!--

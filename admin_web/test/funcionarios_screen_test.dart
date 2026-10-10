@@ -12,6 +12,7 @@ import 'package:ponto_aqui_admin/providers/funcionarios_provider.dart';
 import 'package:ponto_aqui_admin/router/app_router.dart';
 import 'package:ponto_aqui_admin/services/api/dio_client.dart';
 import 'package:ponto_aqui_admin/views/layouts/admin_scaffold.dart';
+import 'package:ponto_aqui_admin/views/widgets/responsive_table_container.dart';
 
 import 'support/auth_fakes.dart';
 import 'support/management_api_fake.dart';
@@ -71,6 +72,116 @@ Future<void> preencher(
 }
 
 void main() {
+  testWidgets(
+    'reativação confirma, bloqueia envio duplo e persiste após recarregar',
+    (tester) async {
+      final api = ManagementApiFake();
+      api.funcionarios.single.addAll({
+        'ativo': false,
+        'usuario_id': 'conta-existente',
+      });
+      final app = await mountFuncionarios(tester, api: api);
+      final acao = find.byKey(const Key('reativar-funcionario-funcionario-1'));
+      await tester.tap(acao);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancelar'));
+      await tester.pumpAndSettle();
+      expect(api.requests.where((r) => r.method == 'PUT'), isEmpty);
+
+      api.writeGate = Completer<void>();
+      await tester.tap(acao);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Reativar'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(tester.widget<IconButton>(acao).onPressed, isNull);
+      expect(api.funcionarios.single['ativo'], isFalse);
+      expect(api.requests.where((r) => r.method == 'PUT'), hasLength(1));
+      api.writeGate!.complete();
+      await tester.pumpAndSettle();
+      final put = api.requests.singleWhere((r) => r.method == 'PUT');
+      expect(put.uri.path, '/api/web/funcionarios/funcionario-1');
+      expect(put.data, {'ativo': true});
+      expect(put.headers['Authorization'], startsWith('Bearer '));
+      expect(api.funcionarios.single['ativo'], isTrue);
+      expect(
+        app.container.read(funcionariosProvider).requireValue.single.usuarioId,
+        'conta-existente',
+      );
+      expect(find.text('Funcionário reativado.'), findsOneWidget);
+      expect(
+        find.byKey(const Key('desativar-funcionario-funcionario-1')),
+        findsOneWidget,
+      );
+      expect(api.alocacoes, hasLength(1));
+      await tester.tap(find.byTooltip('Atualizar funcionários'));
+      await tester.pumpAndSettle();
+      expect(
+        app.container.read(funcionariosProvider).requireValue.single.ativo,
+        isTrue,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'erro na reativação mantém status inativo e informa a mensagem da API',
+    (tester) async {
+      final api = ManagementApiFake();
+      api.funcionarios.single['ativo'] = false;
+      final app = await mountFuncionarios(tester, api: api);
+      await tester.tap(
+        find.byKey(const Key('reativar-funcionario-funcionario-1')),
+      );
+      await tester.pumpAndSettle();
+      api.nextStatus = 400;
+      api.nextBody = {
+        'erro': {'mensagem': 'Não foi possível reativar este cadastro.'},
+      };
+      await tester.tap(find.text('Reativar'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Não foi possível reativar este cadastro.'),
+        findsOneWidget,
+      );
+      expect(
+        app.container.read(funcionariosProvider).requireValue.single.ativo,
+        isFalse,
+      );
+      expect(
+        tester
+            .widget<IconButton>(
+              find.byKey(const Key('reativar-funcionario-funcionario-1')),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      final snack = tester.widget<SnackBar>(find.byType(SnackBar));
+      expect(
+        snack.backgroundColor,
+        Theme.of(tester.element(find.byType(DataTable))).colorScheme.error,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'arrastar tabela no celular revela colunas sem mover a página na horizontal',
+    (tester) async {
+      await mountFuncionarios(tester, size: const Size(320, 760));
+      final horizontal = find.descendant(
+        of: find.byType(ResponsiveTableContainer),
+        matching: find.byType(SingleChildScrollView),
+      );
+      final scroll = tester.widget<SingleChildScrollView>(horizontal);
+      expect(scroll.controller!.offset, 0);
+      await tester.drag(horizontal, const Offset(-240, 0));
+      await tester.pumpAndSettle();
+      expect(scroll.controller!.offset, greaterThan(0));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('lista, cria, edita, desativa e recarrega mantendo o Shell', (
     tester,
   ) async {
@@ -113,10 +224,10 @@ void main() {
     expect(
       tester
           .widget<IconButton>(
-            find.byKey(const Key('desativar-funcionario-funcionario-2')),
+            find.byKey(const Key('reativar-funcionario-funcionario-2')),
           )
           .onPressed,
-      isNull,
+      isNotNull,
     );
 
     app.router.go('/dashboard');

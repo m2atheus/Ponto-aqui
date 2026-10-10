@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// A imagem original é enquadrada pela UI, preservando o arquivo da marca.
+/// Logo transparente; a versão noturna mantém a marca legível em fundos escuros.
 class BrandLogo extends StatelessWidget {
   const BrandLogo({super.key, this.width = 220});
   final double width;
@@ -12,9 +12,12 @@ class BrandLogo extends StatelessWidget {
       aspectRatio: 3.15,
       child: ClipRect(
         child: Image.asset(
-          'assets/brand/ponto_aqui_logo.png',
+          Theme.of(context).brightness == Brightness.dark
+              ? 'assets/brand/ponto_aqui_logo_dark.png'
+              : 'assets/brand/ponto_aqui_logo_transparent.png',
           fit: BoxFit.cover,
-          alignment: const Alignment(0, -0.03),
+          alignment: const Alignment(0, 0.05),
+          filterQuality: FilterQuality.high,
           semanticLabel: 'Ponto Aqui',
         ),
       ),

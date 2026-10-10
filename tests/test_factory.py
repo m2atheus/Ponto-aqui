@@ -9,9 +9,9 @@ def test_factory_initializes_extensions_and_blueprints_without_database_access(a
     configure_mappers()
     assert {"sqlalchemy", "migrate", "flask-jwt-extended"} <= app.extensions.keys()
     assert set(app.blueprints) == {
-        "web", "web.setores", "mobile", "mobile_v1", "auth", "auth_web", "auth_mobile",
+        "web", "web.setores", "web.escalas", "web.w06", "mobile", "mobile_v1", "auth", "auth_web", "auth_mobile", "admin", "funcionarios_v1",
     }
-    assert len(db.metadata.tables) == 13
+    assert len(db.metadata.tables) == 14
     url = app.config["SQLALCHEMY_DATABASE_URI"]
     assert url.drivername == "postgresql+psycopg2"
     assert url.query["sslmode"] == "require"

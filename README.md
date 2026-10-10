@@ -180,10 +180,10 @@ flutter run -d chrome --web-port=3000 --dart-define=ENABLE_MOCK_AUTH=true
 | rh@teste.com | RH | admin |
 | gestor@teste.com | Gestor | admin |
 
-O modo de demonstração precisa ser habilitado explicitamente. Ele permite
-testar a navegação e as telas, mas o cadastro de empresas exige uma sessão
-real. As escalas de demonstração ficam em memória e reiniciam ao atualizar
-a página ou trocar de sessão.
+O modo de demonstração precisa ser habilitado explicitamente e permite testar
+a navegação. Os módulos que consultam ou alteram o banco exigem uma conta real.
+Para cadastrar feriados, afastamentos, funcionários, setores e escalas, entre
+com o RH da empresa; Superadmin gerencia as empresas e suas contas RH.
 
 ## Estado atual do projeto
 
@@ -192,9 +192,10 @@ a página ou trocar de sessão.
 | Login e empresas | Autenticação JWT e cadastro, edição e desativação persistidos no banco. |
 | Funcionários | Listagem, cadastro, edição e desativação pelo RH via `/api/web/funcionarios`, com matrícula única por empresa e histórico preservado. |
 | Setores | CRUD real do RH em `/api/web/setores`, com mapa OpenStreetMap, raio em metros e políticas de ponto. Exclusão bloqueada quando houver alocações, inclusive encerradas. |
-| Alocações | Tela do RH com funcionários, setores e períodos; cadastro e encerramento persistidos em `/api/web/alocacoes`, sem exclusão do histórico. Consulta de setores disponível em `/api/web/setores`. |
-| Dashboard e escalas do painel | Interface por perfil; alguns indicadores e a gestão de escalas ainda usam demonstração. |
-| Escalas e dispositivos na API | Modelos, projeção noturna, motor de conflitos, revogação pessoal e decorator prontos; integração às rotas e ao login pendente. |
+| Alocações | Funcionário, setor, escala opcional e período consultados na API. Cadastro e encerramento persistidos em `/api/web/alocacoes`, sem exclusão do histórico. Com escala, informe início e fim para validar conflitos. |
+| Dashboard e escalas do painel | Indicadores reais por empresa; CRUD de escalas 5x2, Diurno, 12x36 e 24x72. Escalas com histórico permitem editar nome/status; alterar turnos exige outra escala. |
+| Motor de escalas e dispositivos | Projeção noturna e validação de conflitos na criação de alocações. Revogação pessoal e decorator de segurança disponíveis para a integração mobile. |
+| Feriados, afastamentos e espelho | CRUD real em Justificativas; upload/download privado de atestados PDF/PNG/JPEG até 10 MB. Equipe consulta o histórico e Relatórios recebe o espelho mensal do Flask. RH cadastra/remove; Gestor consulta equipe e justificativas. [Guia de uso](docs/W06-admin-web.md). |
 | Sync mobile | `GET /api/v1/mobile/sync`: carga pessoal ou do setor com hora UTC, JWT e aparelho autorizado. |
 | Ponto offline | API de lotes idempotentes, geofencing e upload de selfies; aplicativo mobile ainda não implementado. |
 
@@ -207,7 +208,7 @@ a página ou trocar de sessão.
 | Credenciais de login inválidas | Use a senha da conta real; consulte o arquivo indicado ao criar o Superadmin. |
 | Painel não conecta à API | Confira se o terminal 1 está aberto e se `CORS_ORIGINS` permite a porta 3000. |
 | Empresas indisponíveis em demonstração | Reinicie o painel com `ENABLE_MOCK_AUTH=false` e entre com uma conta real. |
-| Escalas desaparecem ao atualizar | A tela de escalas ainda usa dados em memória; sua persistência será integrada à API. |
+| Cadastros ou anexos indisponíveis | Execute `db upgrade heads`, reinicie Flask/Flutter e entre com uma conta RH real. Os dados são carregados do banco ao reabrir o painel. |
 
 Para usar uma API em outro endereço, adicione ao comando Flutter:
 `--dart-define=API_BASE_URL=https://SUA_API/api/web/`.
@@ -247,5 +248,7 @@ run.py       Inicialização da API em desenvolvimento
 - [W01–W03: autenticação, empresas e funcionários](docs/W01-auth.md).
 - [W02: setores, mapa e contrato da API](docs/W02-admin-web.md).
 - [W04–W07: escalas, conflitos e dispositivos](docs/W04-W07-fundacao.md).
+- [W06: feriados, afastamentos e espelho histórico](docs/W06-espelho.md).
+- [W06 no painel: equipe, justificativas e relatórios](docs/W06-admin-web.md).
 - [W08: sincronização inicial mobile e contrato do payload](docs/W08-sync.md).
 - [W09: marcações offline e selfies](docs/W09.md).

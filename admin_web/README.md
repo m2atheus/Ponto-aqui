@@ -55,18 +55,23 @@ lib/
 │   ├── funcionario.dart
 │   ├── alocacao.dart
 │   ├── setor.dart
-│   └── management_mock.dart
+│   ├── escala.dart
+│   └── w06.dart
 ├── providers/
 │   ├── api_providers.dart
 │   ├── auth_provider.dart
 │   ├── funcionarios_provider.dart
 │   ├── alocacoes_provider.dart
 │   ├── setores_provider.dart
-│   └── management_mock_provider.dart
+│   ├── escalas_provider.dart
+│   ├── dashboard_provider.dart
+│   └── w06_provider.dart
 ├── repositories/
 │   ├── funcionario_repository.dart
 │   ├── alocacao_repository.dart
 │   ├── setor_repository.dart
+│   ├── escala_repository.dart
+│   ├── w06_repository.dart
 │   └── repository_failure.dart
 ├── router/
 │   ├── app_router.dart
@@ -136,9 +141,8 @@ módulos. O login retoma a rota solicitada quando permitida.
 
 O Dashboard mostra cards diferentes por perfil: empresas e atalho de cadastro
 para Superadmin; funcionários, setores e escalas ativas para RH; justificativas
-pendentes para Gestor. O total de empresas vem da API. Escalas
-ativas acompanham as alterações da lista local; funcionários, setores e
-justificativas usam valores fixos.
+pendentes para Gestor. Os totais vêm da API e são atualizados após alterações
+nos cadastros. O botão Atualizar indicadores consulta novamente o banco.
 
 `/empresas` é exclusivo do Superadmin. A tabela mostra razão social, CNPJ,
 administrador/RH e status. Nova Empresa e Editar abrem um formulário com validação
@@ -152,17 +156,16 @@ na edição é opcional. A tela consulta o banco novamente ao recarregar a pági
 e oferece atualização manual. Sessões mockadas não podem cadastrar empresas.
 Não há envio automático de convites.
 
-`/escalas` é exclusivo do RH. A tabela mostra nome, entrada, saída, dias e status.
-O formulário valida horários HH:mm, nomes duplicados e seleção de ao menos um
-dia. Saída anterior à entrada representa término no dia seguinte e é indicada
-na tabela. Remover pede confirmação. O formulário é semanal básico; não calcula
-intervalos, carga horária legal ou escalas cíclicas.
+`/escalas` é exclusivo do RH e usa Dio para GET, POST, PUT e DELETE. A tabela
+mostra modelo, turnos, dias e status. O formulário aceita 5x2, Diurno, 12x36 e
+24x72, vários turnos, intervalos e data de referência para os ciclos. Saída
+anterior à entrada indica virada de dia; horários iguais exigem selecionar
+saída no dia seguinte para jornadas de 24 horas. A API valida os dados.
 
-As listas de escalas são mantidas em memória por providers e preservadas ao
-navegar. São reiniciadas ao trocar/encerrar a sessão ou recarregar o navegador.
-Toda escala recebe o `empresa_id` da sessão, e escritas para outra empresa são
-bloqueadas também no provider. Essas operações não utilizam Dio nem alteram o
-Supabase.
+Remover pede confirmação. Escalas já utilizadas em alocações não podem ser
+removidas nem ter seus turnos reescritos; edite o nome/status ou crie outra
+escala. O servidor extrai `empresa_id` do JWT. Reabrir o painel consulta os
+registros persistidos no Supabase.
 
 `/setores` é exclusivo do RH e usa a API para listar, cadastrar, editar e remover
 os locais de trabalho. O formulário tem mapa OpenStreetMap: clique para definir
@@ -234,7 +237,13 @@ RH e Gestor exigem `empresa_id`; Superadmin pode ter contexto global.
 A autorização e os filtros de empresa continuam obrigatórios no backend.
 O e-mail é único globalmente; a API obtém a empresa pelo usuário autenticado.
 Somente Superadmin tem `empresa_id` nulo. Empresa inativa impede login e
-restauração da sessão. Empresas usam persistência real; Escalas continuam mockadas.
+restauração da sessão. Empresas e escalas usam persistência real.
+
+Equipe, Justificativas e Relatórios consultam os dados reais da empresa via
+`W06Repository`. O RH cadastra, edita e remove feriados/afastamentos e consulta
+o espelho mensal; o Gestor consulta equipe e justificativas. O atestado é enviado
+em multipart ao salvar o afastamento e baixado por um endpoint com JWT.
+Consulte o [guia de uso](../docs/W06-admin-web.md), incluindo as migrations.
 
 ## Verificação e compilação
 

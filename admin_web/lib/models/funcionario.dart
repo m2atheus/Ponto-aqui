@@ -8,6 +8,7 @@ class Funcionario {
     required this.cargo,
     required this.empresaId,
     this.ativo = true,
+    this.usuarioId,
   });
 
   final String id;
@@ -17,6 +18,8 @@ class Funcionario {
   final String? cargo;
   final String empresaId;
   final bool ativo;
+  final String? usuarioId;
+  bool get temAcessoApp => usuarioId != null;
 
   factory Funcionario.fromJson(Object? value) {
     final json = managementObject(value);
@@ -29,6 +32,9 @@ class Funcionario {
       cargo: managementOptionalString(json['cargo'], 'cargo'),
       empresaId: managementString(json['empresa_id'], 'empresa_id'),
       ativo: ativo,
+      usuarioId: json['usuario_id'] == null
+          ? null
+          : managementString(json['usuario_id'], 'usuario_id'),
     );
   }
 
@@ -39,6 +45,7 @@ class Funcionario {
     'cargo': cargo,
     'empresa_id': empresaId,
     'ativo': ativo,
+    if (usuarioId != null) 'usuario_id': usuarioId,
   };
 
   // IDs e empresa são somente leitura; o servidor deriva a empresa do JWT.

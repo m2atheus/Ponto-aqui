@@ -8,6 +8,8 @@ import '../../providers/funcionarios_provider.dart';
 import '../../repositories/repository_failure.dart';
 import '../modules/module_placeholder_view.dart';
 import '../widgets/status_badge.dart';
+import '../widgets/responsive_table_container.dart';
+import 'vincular_acesso_dialog.dart';
 
 class FuncionariosScreen extends ConsumerStatefulWidget {
   const FuncionariosScreen({super.key});
@@ -19,8 +21,9 @@ class _FuncionariosScreenState extends ConsumerState<FuncionariosScreen> {
   final _scroll = ScrollController();
   bool _dialogAberto = false;
   bool _confirmando = false;
-  String? _desativandoId;
-  bool get _ocupado => _dialogAberto || _confirmando || _desativandoId != null;
+  String? _alterandoStatusId;
+  bool get _ocupado =>
+      _dialogAberto || _confirmando || _alterandoStatusId != null;
 
   @override
   void dispose() {
@@ -61,20 +64,66 @@ class _FuncionariosScreenState extends ConsumerState<FuncionariosScreen> {
     }
   }
 
-  Future<void> _desativar(Funcionario funcionario) async {
+  Future<void> _vincularAcesso(Funcionario funcionario) async {
     final session = ref.read(authProvider).asData?.value;
-    if (_ocupado || session == null || session.isMock || !funcionario.ativo) {
+    if (_ocupado ||
+        session == null ||
+        session.isMock ||
+        session.user.role != UserRole.rh ||
+        session.user.companyId != funcionario.empresaId ||
+        !funcionario.ativo ||
+        funcionario.temAcessoApp) {
       return;
     }
+    setState(() => _dialogAberto = true);
+    try {
+      final criado = await showDialog<bool>(
+        context: context,
+        useRootNavigator: false,
+        barrierDismissible: false,
+        builder: (_) => VincularAcessoDialog(
+          funcionario: funcionario,
+          sessionToken: session.accessToken,
+        ),
+      );
+      if (mounted && criado == true && _mesmaSessao(session.accessToken)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: Color(0xFF237A48),
+            content: Text(
+              'Acesso do funcionário ao App gerado com sucesso.',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _dialogAberto = false);
+    }
+  }
+
+  Future<void> _alterarStatus(Funcionario funcionario) async {
+    final session = ref.read(authProvider).asData?.value;
+    if (_ocupado ||
+        session == null ||
+        session.isMock ||
+        session.user.role != UserRole.rh ||
+        session.user.companyId != funcionario.empresaId) {
+      return;
+    }
+    final reativar = !funcionario.ativo;
+    final acao = reativar ? 'Reativar' : 'Desativar';
     setState(() => _confirmando = true);
     try {
       final confirmar = await showDialog<bool>(
         context: context,
         useRootNavigator: false,
         builder: (context) => AlertDialog(
-          title: const Text('Desativar funcionário?'),
+          title: Text('$acao funcionário?'),
           content: Text(
-            'Desativar ${funcionario.nome}? O cadastro e o histórico serão preservados.',
+            reativar
+                ? 'Reativar ${funcionario.nome}? O funcionário voltará a ficar ativo, mantendo seu cadastro e histórico.'
+                : 'Desativar ${funcionario.nome}? O cadastro e o histórico serão preservados.',
           ),
           actions: [
             TextButton(
@@ -83,7 +132,7 @@ class _FuncionariosScreenState extends ConsumerState<FuncionariosScreen> {
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Desativar'),
+              child: Text(acao),
             ),
           ],
         ),
@@ -93,12 +142,23 @@ class _FuncionariosScreenState extends ConsumerState<FuncionariosScreen> {
       }
       setState(() {
         _confirmando = false;
-        _desativandoId = funcionario.id;
+        _alterandoStatusId = funcionario.id;
       });
-      await ref.read(funcionariosProvider.notifier).desativar(funcionario);
+      final controller = ref.read(funcionariosProvider.notifier);
+      if (reativar) {
+        await controller.reativar(funcionario.id);
+      } else {
+        await controller.desativar(funcionario);
+      }
       if (mounted && _mesmaSessao(session.accessToken)) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Funcionário desativado.')),
+          SnackBar(
+            backgroundColor: const Color(0xFF237A48),
+            content: Text(
+              reativar ? 'Funcionário reativado.' : 'Funcionário desativado.',
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
         );
       }
     } on RepositoryFailure catch (error) {
@@ -117,7 +177,7 @@ class _FuncionariosScreenState extends ConsumerState<FuncionariosScreen> {
       if (mounted) {
         setState(() {
           _confirmando = false;
-          _desativandoId = null;
+          _alterandoStatusId = null;
         });
       }
     }
@@ -170,7 +230,7 @@ class _FuncionariosScreenState extends ConsumerState<FuncionariosScreen> {
             'Cadastros da sua empresa. Desativar mantém o histórico de trabalho.',
           ),
           const SizedBox(height: 24),
-          if (dados.isLoading || _desativandoId != null)
+          if (dados.isLoading || _alterandoStatusId != null)
             const Padding(
               padding: EdgeInsets.only(bottom: 16),
               child: LinearProgressIndicator(),
@@ -212,77 +272,95 @@ class _FuncionariosScreenState extends ConsumerState<FuncionariosScreen> {
               )
             else
               Card(
-                child: Scrollbar(
+                child: ResponsiveTableContainer(
                   controller: _scroll,
-                  thumbVisibility: true,
-                  child: SingleChildScrollView(
-                    controller: _scroll,
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: DataTable(
-                      columns: const [
-                        DataColumn(label: Text('Nome')),
-                        DataColumn(label: Text('Matrícula')),
-                        DataColumn(label: Text('Cargo')),
-                        DataColumn(label: Text('Status')),
-                        DataColumn(label: Text('Ações')),
-                      ],
-                      rows: [
-                        for (final funcionario in rows)
-                          DataRow(
-                            key: ValueKey(funcionario.id),
-                            cells: [
-                              DataCell(Text(funcionario.nome)),
-                              DataCell(Text(funcionario.matricula)),
-                              DataCell(
-                                Text(
-                                  funcionario.cargo?.trim().isNotEmpty == true
-                                      ? funcionario.cargo!
-                                      : '—',
-                                ),
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: DataTable(
+                    columns: const [
+                      DataColumn(label: Text('Nome')),
+                      DataColumn(label: Text('Matrícula')),
+                      DataColumn(label: Text('Cargo')),
+                      DataColumn(label: Text('Status')),
+                      DataColumn(label: Text('Ações')),
+                    ],
+                    rows: [
+                      for (final funcionario in rows)
+                        DataRow(
+                          key: ValueKey(funcionario.id),
+                          cells: [
+                            DataCell(Text(funcionario.nome)),
+                            DataCell(Text(funcionario.matricula)),
+                            DataCell(
+                              Text(
+                                funcionario.cargo?.trim().isNotEmpty == true
+                                    ? funcionario.cargo!
+                                    : '—',
                               ),
-                              DataCell(StatusBadge(ativo: funcionario.ativo)),
-                              DataCell(
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      key: Key(
-                                        'editar-funcionario-${funcionario.id}',
-                                      ),
-                                      tooltip: 'Editar ${funcionario.nome}',
-                                      onPressed: podeGravar
-                                          ? () => _formulario(funcionario)
-                                          : null,
-                                      icon: const Icon(Icons.edit_outlined),
+                            ),
+                            DataCell(StatusBadge(ativo: funcionario.ativo)),
+                            DataCell(
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    key: Key(
+                                      'gerar-acesso-app-${funcionario.id}',
                                     ),
-                                    IconButton(
-                                      key: Key(
-                                        'desativar-funcionario-${funcionario.id}',
-                                      ),
-                                      tooltip: 'Desativar ${funcionario.nome}',
-                                      onPressed: podeGravar && funcionario.ativo
-                                          ? () => _desativar(funcionario)
-                                          : null,
-                                      icon: _desativandoId == funcionario.id
-                                          ? const SizedBox(
-                                              width: 20,
-                                              height: 20,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                              ),
-                                            )
-                                          : const Icon(
-                                              Icons.person_off_outlined,
+                                    tooltip: funcionario.temAcessoApp
+                                        ? 'Acesso ao App já gerado'
+                                        : 'Gerar Acesso App',
+                                    onPressed:
+                                        podeGravar &&
+                                            funcionario.ativo &&
+                                            !funcionario.temAcessoApp
+                                        ? () => _vincularAcesso(funcionario)
+                                        : null,
+                                    icon: Icon(
+                                      funcionario.temAcessoApp
+                                          ? Icons.verified_user_outlined
+                                          : Icons.key_outlined,
+                                    ),
+                                  ),
+                                  IconButton(
+                                    key: Key(
+                                      'editar-funcionario-${funcionario.id}',
+                                    ),
+                                    tooltip: 'Editar ${funcionario.nome}',
+                                    onPressed: podeGravar
+                                        ? () => _formulario(funcionario)
+                                        : null,
+                                    icon: const Icon(Icons.edit_outlined),
+                                  ),
+                                  IconButton(
+                                    key: Key(
+                                      '${funcionario.ativo ? 'desativar' : 'reativar'}-funcionario-${funcionario.id}',
+                                    ),
+                                    tooltip:
+                                        '${funcionario.ativo ? 'Desativar' : 'Reativar'} ${funcionario.nome}',
+                                    onPressed: podeGravar
+                                        ? () => _alterarStatus(funcionario)
+                                        : null,
+                                    icon: _alterandoStatusId == funcionario.id
+                                        ? const SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
                                             ),
-                                    ),
-                                  ],
-                                ),
+                                          )
+                                        : Icon(
+                                            funcionario.ativo
+                                                ? Icons.person_off_outlined
+                                                : Icons
+                                                      .person_add_alt_1_outlined,
+                                          ),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                      ],
-                    ),
+                            ),
+                          ],
+                        ),
+                    ],
                   ),
                 ),
               ),

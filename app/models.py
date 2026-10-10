@@ -355,18 +355,33 @@ class Afastamentos(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.Model):
     __tablename__ = "afastamentos"
 
     funcionario_id = db.Column(UUID(as_uuid=True), nullable=False)
+    # Nullable preserva o cadastro de funcionários ainda sem conta de acesso.
+    usuario_id = db.Column(UUID(as_uuid=True))
     tipo = db.Column(enum_column_type(TipoAfastamento, "tipo_afastamento"), nullable=False)
     data_inicio = db.Column(db.Date, nullable=False)
     data_fim = db.Column(db.Date, nullable=False)
     anexo_url = db.Column(db.String(2048))
     descricao = db.Column(db.Text)
-    funcionario = db.relationship("Funcionarios", viewonly=True)
+    funcionario = db.relationship(
+        "Funcionarios", viewonly=True,
+        foreign_keys=lambda: [Afastamentos.funcionario_id, Afastamentos.empresa_id],
+    )
+    usuario = db.relationship("Usuarios", viewonly=True)
 
     __table_args__ = (
         UniqueConstraint("id", "empresa_id", name="uq_afastamentos_id_empresa"),
         ForeignKeyConstraint(
             ["funcionario_id", "empresa_id"], ["funcionarios.id", "funcionarios.empresa_id"],
             name="fk_afastamentos_funcionario_empresa", ondelete="RESTRICT", onupdate="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["usuario_id", "empresa_id"], ["usuarios.id", "usuarios.empresa_id"],
+            name="fk_afastamentos_usuario_empresa", ondelete="RESTRICT", onupdate="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["funcionario_id", "empresa_id", "usuario_id"],
+            ["funcionarios.id", "funcionarios.empresa_id", "funcionarios.usuario_id"],
+            name="fk_afastamentos_funcionario_usuario", ondelete="RESTRICT", onupdate="RESTRICT",
         ),
         CheckConstraint("data_fim >= data_inicio", name="periodo_valido"),
         # Datas inclusivas: férias até dia 10 conflitam com atestado no dia 10.
@@ -377,6 +392,23 @@ class Afastamentos(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.Model):
         ),
         Index("ix_afastamentos_empresa_funcionario_datas", "empresa_id", "funcionario_id",
               "data_inicio", "data_fim"),
+        Index("ix_afastamentos_empresa_usuario_datas", "empresa_id", "usuario_id",
+              "data_inicio", "data_fim"),
+    )
+
+
+class AnexosAfastamento(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.Model):
+    __tablename__ = "anexos_afastamento"
+
+    afastamento_id = db.Column(UUID(as_uuid=True), nullable=False)
+    nome = db.Column(db.String(255), nullable=False)
+    content_type = db.Column(db.String(80), nullable=False)
+    conteudo = db.Column(db.LargeBinary, nullable=False)
+    __table_args__ = (
+        UniqueConstraint("empresa_id", "afastamento_id", name="uq_anexos_afastamento_vinculo"),
+        ForeignKeyConstraint(["afastamento_id", "empresa_id"], ["afastamentos.id", "afastamentos.empresa_id"],
+            name="fk_anexos_afastamento_vinculo", ondelete="CASCADE", onupdate="RESTRICT"),
+        CheckConstraint("octet_length(conteudo) BETWEEN 1 AND 10485760", name="tamanho_valido"),
     )
 
 

@@ -5,11 +5,14 @@ import '../models/alocacao.dart';
 import '../models/auth_session.dart';
 import '../models/funcionario.dart';
 import '../models/setor.dart';
+import '../models/escala.dart';
 import '../repositories/repository_failure.dart';
 import '../repositories/setor_repository.dart';
 import 'api_providers.dart';
 import 'auth_provider.dart';
 import 'funcionarios_provider.dart';
+import 'escalas_provider.dart';
+import 'w06_provider.dart';
 
 AuthSession _sessaoRh(AuthSession? session) {
   if (session == null ||
@@ -36,12 +39,15 @@ class AlocacoesData {
     required List<Alocacao> alocacoes,
     required List<Funcionario> funcionarios,
     required List<Setor> setores,
+    List<Escala> escalas = const [],
   }) : alocacoes = List.unmodifiable(alocacoes),
        funcionarios = List.unmodifiable(funcionarios),
-       setores = List.unmodifiable(setores);
+       setores = List.unmodifiable(setores),
+       escalas = List.unmodifiable(escalas);
   final List<Alocacao> alocacoes;
   final List<Funcionario> funcionarios;
   final List<Setor> setores;
+  final List<Escala> escalas;
 }
 
 final alocacoesProvider =
@@ -63,17 +69,20 @@ class AlocacoesController extends AsyncNotifier<AlocacoesData> {
     final alocacoes = ref.watch(alocacaoRepositoryProvider);
     final funcionarios = ref.watch(funcionarioRepositoryProvider);
     final setores = ref.watch(setorRepositoryProvider);
+    final escalas = ref.watch(escalaRepositoryProvider);
     // Consultas independentes; aguarda todas, inclusive em falha, antes de
     // liberar uma nova tentativa com dados consistentes da mesma sessão.
     final results = await Future.wait<Object>([
       alocacoes.listar(cancelToken: cancel),
       funcionarios.listar(cancelToken: cancel),
       setores.listar(cancelToken: cancel),
+      escalas.listar(cancelToken: cancel),
     ]);
     return AlocacoesData(
       alocacoes: results[0] as List<Alocacao>,
       funcionarios: results[1] as List<Funcionario>,
       setores: results[2] as List<Setor>,
+      escalas: results[3] as List<Escala>,
     );
   }
 
@@ -115,7 +124,9 @@ class AlocacoesController extends AsyncNotifier<AlocacoesData> {
         alocacoes: rows,
         funcionarios: latest.funcionarios,
         setores: latest.setores,
+        escalas: latest.escalas,
       ),
     );
+    ref.invalidate(w06Provider);
   }
 }

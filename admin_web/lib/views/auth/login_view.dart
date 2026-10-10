@@ -121,12 +121,12 @@ class _LoginViewState extends ConsumerState<LoginView> {
                 FilledButton(
                   onPressed: auth.isLoading ? null : _submit,
                   child: auth.isLoading
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: Colors.white,
+                            color: Theme.of(context).colorScheme.onPrimary,
                           ),
                         )
                       : const Text('Entrar'),
@@ -136,12 +136,17 @@ class _LoginViewState extends ConsumerState<LoginView> {
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: BrandColors.mint,
+                      color: Theme.of(context).colorScheme.secondaryContainer,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Text(
+                    child: Text(
                       'Acessos de teste: admin@teste.com, rh@teste.com ou gestor@teste.com\nSenha: admin',
-                      style: TextStyle(fontSize: 12, color: BrandColors.ink),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSecondaryContainer,
+                      ),
                     ),
                   ),
                 ],

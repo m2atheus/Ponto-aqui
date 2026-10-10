@@ -32,6 +32,25 @@ void main() {
   });
   tearDown(() => dio.close(force: true));
 
+  test('reativar envia somente ativo e valida o funcionário confirmado na resposta', () async {
+    adapter.funcionarios.single['ativo'] = false;
+    final saved = await funcionarios.reativarFuncionario('funcionario-1');
+    expect(saved.ativo, isTrue);
+    expect(adapter.requests.single.method, 'PUT');
+    expect(adapter.requests.single.data, {'ativo': true});
+    for (final invalido in [
+      {...funcionarioJson(), 'ativo': false},
+      funcionarioJson(empresaId: 'empresa-2'),
+      {...funcionarioJson(), 'id': 'outro-funcionario'},
+    ]) {
+      adapter.handler = (_) => jsonResponse({'funcionario': invalido});
+      await expectLater(
+        funcionarios.reativarFuncionario('funcionario-1'),
+        throwsA(isA<RepositoryFailure>()),
+      );
+    }
+  });
+
   test(
     'setores de outra empresa e formato inválido não entram nos Dropdowns',
     () async {

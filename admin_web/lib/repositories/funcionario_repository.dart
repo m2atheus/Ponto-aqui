@@ -82,4 +82,49 @@ class FuncionarioRepository {
     }
     return saved;
   });
+
+  Future<Funcionario> reativarFuncionario(String id) =>
+      repositoryRequest(() async {
+        final resourceId = repositoryResourceId(id);
+        final response = await _dio.put<Object?>(
+          'funcionarios/$resourceId',
+          data: {'ativo': true},
+        );
+        final saved = _single(response.data);
+        if (saved.id != id || !saved.ativo) {
+          throw const FormatException('Reativação não confirmada pela API.');
+        }
+        return saved;
+      });
+
+  Future<Funcionario> vincularAcessoApp(
+    String funcionarioId,
+    String email,
+    String senha,
+  ) => repositoryRequest(() async {
+    final id = repositoryResourceId(funcionarioId);
+    final base = Uri.parse(_dio.options.baseUrl);
+    final endpoint = '/api/v1/funcionarios/$id/vincular-acesso';
+    final path = base.path.replaceFirst(RegExp(r'/api/web/?$'), endpoint);
+    // Mantém o servidor, o prefixo do proxy e o interceptor JWT existentes.
+    final url = base.path == path
+        ? base.resolve(endpoint).toString()
+        : base.replace(path: path, query: null, fragment: null).toString();
+    final response = await _dio.post<Object?>(
+      url,
+      data: {'email': email.trim().toLowerCase(), 'senha': senha},
+    );
+    final json = managementObject(response.data);
+    final saved = _parse(json['funcionario']);
+    final usuario = managementObject(json['usuario']);
+    if (response.statusCode != 201 ||
+        saved.id != id ||
+        saved.usuarioId == null ||
+        usuario['id'] != saved.usuarioId ||
+        usuario['empresa_id'] != empresaId ||
+        usuario['papel'] != 'FUNCIONARIO') {
+      throw const FormatException('Vinculação não confirmada pela API.');
+    }
+    return saved;
+  });
 }

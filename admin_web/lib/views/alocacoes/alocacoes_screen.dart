@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../widgets/responsive_table_container.dart';
+
 import '../../models/alocacao.dart';
 import '../../models/auth_session.dart';
 import '../../models/funcionario.dart';
@@ -183,65 +185,58 @@ class _AlocacoesScreenState extends ConsumerState<AlocacoesScreen> {
     final funcionarios = {for (final f in data.funcionarios) f.id: f};
     final setores = {for (final s in data.setores) s.id: s};
     return Card(
-      child: Scrollbar(
+      child: ResponsiveTableContainer(
         controller: _scroll,
-        thumbVisibility: true,
-        child: SingleChildScrollView(
-          controller: _scroll,
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.only(bottom: 12),
-          child: DataTable(
-            columns: const [
-              DataColumn(label: Text('Funcionário')),
-              DataColumn(label: Text('Matrícula')),
-              DataColumn(label: Text('Setor')),
-              DataColumn(label: Text('Início')),
-              DataColumn(label: Text('Fim')),
-              DataColumn(label: Text('Ações')),
-            ],
-            rows: [
-              for (final row in data.alocacoes)
-                DataRow(
-                  key: ValueKey(row.id),
-                  cells: [
-                    DataCell(
-                      Text(
-                        funcionarios[row.funcionarioId]?.nome ??
-                            'Funcionário ${row.funcionarioId}',
-                      ),
+        padding: const EdgeInsets.only(bottom: 12),
+        child: DataTable(
+          columns: const [
+            DataColumn(label: Text('Funcionário')),
+            DataColumn(label: Text('Matrícula')),
+            DataColumn(label: Text('Setor')),
+            DataColumn(label: Text('Início')),
+            DataColumn(label: Text('Fim')),
+            DataColumn(label: Text('Ações')),
+          ],
+          rows: [
+            for (final row in data.alocacoes)
+              DataRow(
+                key: ValueKey(row.id),
+                cells: [
+                  DataCell(
+                    Text(
+                      funcionarios[row.funcionarioId]?.nome ??
+                          'Funcionário ${row.funcionarioId}',
                     ),
-                    DataCell(
-                      Text(funcionarios[row.funcionarioId]?.matricula ?? '—'),
-                    ),
-                    DataCell(
-                      Text(
-                        setores[row.setorId]?.nome ?? 'Setor ${row.setorId}',
-                      ),
-                    ),
-                    DataCell(Text(civilDateDisplay(row.dataInicio))),
-                    DataCell(
-                      Text(
-                        row.dataFim == null
-                            ? 'Em aberto'
-                            : civilDateDisplay(row.dataFim!),
-                      ),
-                    ),
-                    DataCell(
+                  ),
+                  DataCell(
+                    Text(funcionarios[row.funcionarioId]?.matricula ?? '—'),
+                  ),
+                  DataCell(
+                    Text(setores[row.setorId]?.nome ?? 'Setor ${row.setorId}'),
+                  ),
+                  DataCell(Text(civilDateDisplay(row.dataInicio))),
+                  DataCell(
+                    Text(
                       row.dataFim == null
-                          ? IconButton(
-                              key: Key('encerrar-alocacao-${row.id}'),
-                              tooltip: 'Encerrar alocação',
-                              onPressed: enabled
-                                  ? () => _formulario(data, row)
-                                  : null,
-                              icon: const Icon(Icons.event_busy_outlined),
-                            )
-                          : const Text('Fim definido'),
+                          ? 'Em aberto'
+                          : civilDateDisplay(row.dataFim!),
                     ),
-                  ],
-                ),
-            ],
-          ),
+                  ),
+                  DataCell(
+                    row.dataFim == null
+                        ? IconButton(
+                            key: Key('encerrar-alocacao-${row.id}'),
+                            tooltip: 'Encerrar alocação',
+                            onPressed: enabled
+                                ? () => _formulario(data, row)
+                                : null,
+                            icon: const Icon(Icons.event_busy_outlined),
+                          )
+                        : const Text('Fim definido'),
+                  ),
+                ],
+              ),
+          ],
         ),
       ),
     );
@@ -269,6 +264,7 @@ class _AlocacaoDialogState extends ConsumerState<_AlocacaoDialog> {
   late final TextEditingController _fim;
   String? _funcionarioId;
   String? _setorId;
+  String _escalaId = 'sem-escala';
   bool _salvando = false;
   String? _erro;
   bool get _encerramento => widget.alocacao != null;
@@ -295,7 +291,9 @@ class _AlocacaoDialogState extends ConsumerState<_AlocacaoDialog> {
 
   String? _validarData(String? value, {bool fim = false}) {
     if (value == null || value.trim().isEmpty) {
-      return fim && !_encerramento ? null : 'Informe a data.';
+      return fim && !_encerramento && _escalaId == 'sem-escala'
+          ? null
+          : 'Informe a data.';
     }
     try {
       final iso = civilDateFromInput(value);
@@ -361,7 +359,9 @@ class _AlocacaoDialogState extends ConsumerState<_AlocacaoDialog> {
             ? null
             : civilDateFromInput(_fim.text),
         empresaId: widget.empresaId,
-        escalaId: anterior?.escalaId,
+        escalaId:
+            anterior?.escalaId ??
+            (_escalaId == 'sem-escala' ? null : _escalaId),
       );
       await ref.read(alocacoesProvider.notifier).salvar(dto);
       if (mounted &&
@@ -400,7 +400,11 @@ class _AlocacaoDialogState extends ConsumerState<_AlocacaoDialog> {
     keyboardType: TextInputType.datetime,
     validator: (value) => _validarData(value, fim: fim),
     decoration: InputDecoration(
-      labelText: fim ? (_encerramento ? 'Fim' : 'Fim (opcional)') : 'Início',
+      labelText: fim
+          ? (_encerramento || _escalaId != 'sem-escala'
+                ? 'Fim'
+                : 'Fim (opcional)')
+          : 'Início',
       hintText: 'DD/MM/AAAA',
       counterText: '',
       suffixIcon: IconButton(
@@ -487,13 +491,36 @@ class _AlocacaoDialogState extends ConsumerState<_AlocacaoDialog> {
                   ),
                   const SizedBox(height: 16),
                   _campoData(_inicio, fim: false),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    key: const Key('alocacao-escala'),
+                    isExpanded: true,
+                    initialValue: _escalaId,
+                    decoration: const InputDecoration(labelText: 'Escala'),
+                    items: [
+                      const DropdownMenuItem(
+                        value: 'sem-escala',
+                        child: Text('Sem escala (sem apuração de jornada)'),
+                      ),
+                      for (final e in widget.data.escalas.where(
+                        (e) => e.ativa && e.modelo != 'Legado',
+                      ))
+                        DropdownMenuItem(
+                          value: e.id,
+                          child: Text(e.nome, overflow: TextOverflow.ellipsis),
+                        ),
+                    ],
+                    onChanged: _salvando
+                        ? null
+                        : (v) => setState(() => _escalaId = v!),
+                  ),
                 ],
                 const SizedBox(height: 16),
                 _campoData(_fim, fim: true),
                 if (!_encerramento) ...[
                   const SizedBox(height: 12),
                   const Text(
-                    'Deixe o fim em branco para manter a alocação em aberto.',
+                    'Com escala, informe o fim do período para validar conflitos de jornada. Sem escala, o vínculo pode ficar em aberto.',
                   ),
                 ],
                 if (_erro != null) ...[
