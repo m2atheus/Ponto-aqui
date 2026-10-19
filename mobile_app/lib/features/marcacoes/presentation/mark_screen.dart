@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/providers.dart';
 import '../../../core/capture.dart';
+import '../../../core/clock/clock_service.dart';
 import '../domain/mark.dart';
 import 'mark_view_model.dart';
 
@@ -31,6 +32,16 @@ class MarkHome extends ConsumerWidget {
       );
     }
     final repository = ref.watch(repositoryProvider);
+    final clockService = ref.watch(clockServiceProvider(employee));
+    final service = clockService.asData?.value;
+    if (clockService.hasError) {
+      return const Scaffold(
+        body: Center(child: Text('Não foi possível abrir o banco local.')),
+      );
+    }
+    if (service == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     ref.watch(connectivityProvider);
     return repository.when(
       loading: () =>
@@ -39,9 +50,10 @@ class MarkHome extends ConsumerWidget {
         body: Center(child: Text('Não foi possível abrir o banco local: $e')),
       ),
       data: (value) => MarkScreen(
-        key: ValueKey(employee.scope),
+        key: ValueKey((employee, service)),
         repository: value,
         employee: employee,
+        clockService: service,
         offline: () {
           final current = ref.read(connectivityProvider).asData?.value;
           return current?.contains(ConnectivityResult.none);
@@ -58,12 +70,14 @@ class MarkScreen extends StatefulWidget {
     required this.employee,
     required this.offline,
     this.clock,
+    this.clockService,
     this.suspiciousWindow = const Duration(seconds: 30),
   });
   final MarkRepository repository;
   final EmployeeContext employee;
   final bool? Function() offline;
   final Clock? clock;
+  final ClockService? clockService;
   final Duration suspiciousWindow;
   @override
   State<MarkScreen> createState() => _MarkScreenState();
@@ -72,6 +86,7 @@ class MarkScreen extends StatefulWidget {
 class _MarkScreenState extends State<MarkScreen> with WidgetsBindingObserver {
   late final MarkViewModel vm;
   Timer? timer;
+  Timer? previewTimer;
   bool dialogOpen = false;
   @override
   void initState() {
@@ -80,19 +95,38 @@ class _MarkScreenState extends State<MarkScreen> with WidgetsBindingObserver {
     vm = MarkViewModel(
       repository: widget.repository,
       context: widget.employee,
-      clock: widget.clock ?? DeviceClock(),
+      clock: widget.clockService?.clock ?? widget.clock ?? DeviceClock(),
+      clockService: widget.clockService,
       offline: widget.offline,
       suspiciousWindow: widget.suspiciousWindow,
     )..addListener(changed);
     vm.load();
-    timer = Timer.periodic(const Duration(seconds: 15), (_) {
-      if (!vm.busy && vm.confirmation == null) vm.load();
-    });
+    startPreview();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) vm.load();
+    if (state == AppLifecycleState.resumed) {
+      startPreview();
+      vm.load();
+    } else {
+      previewTimer?.cancel();
+      timer?.cancel();
+      vm.clockService.invalidateContinuity();
+      vm.refreshTime();
+    }
+  }
+
+  void startPreview() {
+    previewTimer?.cancel();
+    previewTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => vm.refreshTime(),
+    );
+    timer?.cancel();
+    timer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!vm.busy && vm.confirmation == null) vm.load();
+    });
   }
 
   void changed() {
@@ -109,7 +143,8 @@ class _MarkScreenState extends State<MarkScreen> with WidgetsBindingObserver {
             title: const Text('Confirmar ponto consecutivo'),
             content: Text(
               'Você registrou ${request.previous.type.label.toLowerCase()} há pouco tempo. '
-              'Deseja registrar ${request.next.label.toLowerCase()} agora?',
+              'Deseja registrar ${request.next.label.toLowerCase()} agora?\n\n'
+              'Horário capturado: ${vm.confirmationOccurredIso}',
             ),
             actions: [
               TextButton(
@@ -133,8 +168,10 @@ class _MarkScreenState extends State<MarkScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     timer?.cancel();
+    previewTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     vm.removeListener(changed);
+    vm.clockService.invalidateContinuity('screen_detached');
     vm.dispose();
     super.dispose();
   }
@@ -195,6 +232,35 @@ class _MarkScreenState extends State<MarkScreen> with WidgetsBindingObserver {
                 const SizedBox(height: 24),
                 if (vm.ready && vm.next == null)
                   const Text('Todas as etapas previstas foram concluídas.'),
+                Text(
+                  'Hora do aparelho: ${explicitIso(vm.preview.wall).substring(11, 19)}',
+                  key: const Key('device-time-preview'),
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const Text(
+                  'Este é o relógio usado na captura. O horário definitivo é salvo no toque.',
+                ),
+                if (vm.timeState.estimate != null)
+                  Text(
+                    'Desvio estimado: ${vm.timeState.estimate!.seconds} s '
+                    '(servidor − aparelho; estimativa com latência).',
+                  ),
+                if (vm.timeState.estimate != null &&
+                    widget.employee.clockLimitSeconds == null)
+                  const Text(
+                    'Limite de desvio da empresa ainda não disponível.',
+                  ),
+                if (vm.clockWarning != null)
+                  Semantics(
+                    liveRegion: true,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        vm.clockWarning!,
+                        key: const Key('clock-warning'),
+                      ),
+                    ),
+                  ),
                 FilledButton.icon(
                   onPressed:
                       !vm.busy &&

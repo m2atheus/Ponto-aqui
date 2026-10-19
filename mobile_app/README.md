@@ -3,6 +3,9 @@
 Aplicativo independente Android/iOS: MVVM, Riverpod, Repository Pattern e SQLite
 real via Drift. 
 
+Tratamento do relógio, auditoria atual, matriz de endpoints, arquivos, sete critérios
+e dependências: [evidência temporal](docs/timekeeping.md).
+
 ## Execução
 
 Ambiente validado: Flutter 3.47.6 / Dart 3.13.5. Versões em `pubspec.lock`.
@@ -15,6 +18,11 @@ flutter test
 flutter devices
 flutter run -d <id-do-aparelho> --dart-define=PONTO_AQUI_DEMO=true
 ```
+
+`cd mobile_app` seleciona o projeto mobile. `flutter pub get` resolve as dependências
+fixadas. `flutter analyze` verifica tipos e lints. `flutter test` executa as suítes
+locais e de widgets. `flutter devices` lista alvos disponíveis. `flutter run` inicia
+a demonstração debug no alvo escolhido, sem habilitar dados fictícios em release.
 
 Android requer Android SDK; iOS requer macOS/Xcode. Não existe alvo Web.
 Drift utiliza sua API SQL: não é necessário gerar código.
@@ -58,7 +66,7 @@ incluem manifests, Gradle/Xcode, runners, ícones e recursos de plataforma.
 | `lib/app/providers.dart` | Injeção Riverpod, contexto demo restrito, banco privado e conectividade |
 | `lib/core/capture.dart` | Relógio substituível, data civil IANA, ISO com offset e conversão W08 |
 | `lib/features/marcacoes/domain/mark.dart` | Tipos, escopo, vigência/alocação, evento imutável e interface de Repository |
-| `lib/features/marcacoes/data/sqlite_mark_repository.dart` | Schema v1, SQLite, transações, histórico/outbox e integridade |
+| `lib/features/marcacoes/data/sqlite_mark_repository.dart` | Schema v2, SQLite, transações, histórico/outbox e integridade |
 | `lib/features/marcacoes/presentation/mark_view_model.dart` | Captura, estado visual, concorrência, confirmação e erros |
 | `lib/features/marcacoes/presentation/mark_screen.dart` | Tela responsiva, etapas, horários, mensagens acessíveis e diálogo |
 | `test/marcacoes_test.dart` | Domínio, ViewModel, SQLite em memória/arquivo e widgets |
@@ -118,6 +126,13 @@ produção. Relógio e repositório são substituíveis. O teste de recuperaçã
 SQLite real; testes não simulam persistência com listas.
 
 ## Validação e limites
+
+Em 19/10/2026, após o tratamento temporal: `flutter analyze` **sem problemas** e
+`flutter test --reporter expanded` **52 testes aprovados, nenhum ignorado**.
+Esse comando de teste executa as suítes com saída detalhada. Inclui regressão das
+marcações, relógio, widgets, reabertura de SQLite e migração real de schema 1 para 2
+preservando evidências e metadados da fila. Sem execução física ou integração HTTP
+real com Flask/PostgreSQL nesta entrega.
 
 Validação executada em 13/10/2026: `flutter pub get` concluído;
 `flutter analyze` **sem problemas**; `flutter test` **28 testes aprovados**.

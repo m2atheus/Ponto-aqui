@@ -36,6 +36,7 @@ class EmployeeContext {
     required List<Allocation> allocations,
     this.selectedAllocationId,
     this.estimate,
+    this.clockLimitSeconds,
     this.crossesMidnight = false,
     this.isDemo = false,
   }) : allocations = List.unmodifiable(allocations);
@@ -44,6 +45,8 @@ class EmployeeContext {
   final List<Allocation> allocations;
   final String? selectedAllocationId;
   final ClockEstimate? estimate;
+  // W08 setor.politicas.limite_desvio_relogio_segundos; absent means unknown.
+  final int? clockLimitSeconds;
   final bool crossesMidnight, isDemo;
   String get scope => jsonEncode([apiOrigin, companyId, userId, deviceId]);
   Allocation allocationOn(String day) {

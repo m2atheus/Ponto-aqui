@@ -7,6 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/capture.dart';
+import '../core/clock/clock_service.dart';
+import '../core/clock/clock_response_observer.dart';
+import '../core/clock/sqlite_clock_estimate_store.dart';
 import '../features/marcacoes/data/sqlite_mark_repository.dart';
 import '../features/marcacoes/domain/mark.dart';
 
@@ -37,7 +40,7 @@ final employeeContextProvider = Provider<EmployeeContext?>((ref) {
   );
 });
 
-final repositoryProvider = FutureProvider<MarkRepository>((ref) async {
+final databaseProvider = FutureProvider<MarkDatabase>((ref) async {
   final directory = await getApplicationSupportDirectory();
   var databaseFile = File('${directory.path}/ponto_aqui.sqlite');
   if (!await databaseFile.exists()) {
@@ -63,8 +66,39 @@ final repositoryProvider = FutureProvider<MarkRepository>((ref) async {
   ref.onDispose(() {
     db.close();
   });
-  return SqliteMarkRepository(db);
+  return db;
 });
+
+final repositoryProvider = FutureProvider<MarkRepository>(
+  (ref) async => SqliteMarkRepository(await ref.watch(databaseProvider.future)),
+);
+
+final deviceClockProvider = Provider<Clock>((ref) => DeviceClock());
+final monotonicClockProvider = Provider<MonotonicClock>(
+  (ref) => StopwatchClock(),
+);
+final clockServiceProvider =
+    FutureProvider.family<ClockService, EmployeeContext>((ref, employee) async {
+      final db = await ref.watch(databaseProvider.future);
+      final service = ClockService(
+        scope: employee.scope,
+        clock: ref.watch(deviceClockProvider),
+        monotonic: ref.watch(monotonicClockProvider),
+        store: SqliteClockEstimateStore(db),
+        initialEstimate: employee.estimate,
+      );
+      await service.restore();
+      return service;
+    });
+
+// Future mobile HTTP client hooks into this adapter; no client exists yet.
+final clockResponseObserverProvider =
+    FutureProvider.family<ClockResponseObserver, EmployeeContext>(
+      (ref, employee) async => ClockResponseObserver(
+        service: await ref.watch(clockServiceProvider(employee).future),
+        apiOrigin: Uri.parse(employee.apiOrigin),
+      ),
+    );
 
 // Connectivity is only an observation of network interfaces, never API reachability.
 final connectivityProvider = StreamProvider<List<ConnectivityResult>>((

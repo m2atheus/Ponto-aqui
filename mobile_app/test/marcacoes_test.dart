@@ -9,6 +9,7 @@ import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as timezone;
 import 'package:ponto_aqui_mobile/app/providers.dart';
 import 'package:ponto_aqui_mobile/core/capture.dart';
+import 'package:ponto_aqui_mobile/core/clock/clock_service.dart';
 import 'package:ponto_aqui_mobile/features/marcacoes/data/sqlite_mark_repository.dart';
 import 'package:ponto_aqui_mobile/features/marcacoes/domain/mark.dart';
 import 'package:ponto_aqui_mobile/features/marcacoes/presentation/mark_screen.dart';
@@ -392,6 +393,18 @@ void main() {
   test(
     'W09 payload excludes internal fields and preserves original evidence',
     () async {
+      final temporal = ClockService(
+        scope: employee(demo: false).scope,
+        clock: clock,
+        monotonic: StopwatchClock(),
+      );
+      final moment = temporal.read();
+      await temporal.observe(
+        serverTimestamp: clock.value.subtract(const Duration(seconds: 15)),
+        sent: moment,
+        received: moment,
+        source: 'test',
+      );
       final other = MarkViewModel(
         repository: repository,
         context: employee(
@@ -399,6 +412,7 @@ void main() {
           estimate: ClockEstimate(-15000, clock.value),
         ),
         clock: clock,
+        clockService: temporal,
         offline: () => true,
       );
       addTearDown(other.dispose);
@@ -500,8 +514,9 @@ void main() {
       await tester.scrollUntilVisible(find.text('Registrar entrada'), 200);
       await tester.tap(find.text('Registrar entrada'));
       await tester.pumpAndSettle();
-      expect(find.text('11:00:00'), findsOneWidget);
       expect(find.text('Ponto salvo no aparelho'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('11:00:00'), -200);
+      expect(find.text('11:00:00'), findsOneWidget);
       expect((await repository.pending(employee().scope)).length, 1);
       await tester.pumpWidget(const SizedBox());
     },

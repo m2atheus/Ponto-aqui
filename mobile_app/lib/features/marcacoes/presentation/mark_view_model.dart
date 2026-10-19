@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/capture.dart';
+import '../../../core/clock/clock_service.dart';
 import '../domain/mark.dart';
 
 class MarkViewModel extends ChangeNotifier {
@@ -11,11 +12,37 @@ class MarkViewModel extends ChangeNotifier {
     required this.clock,
     required this.offline,
     this.suspiciousWindow = const Duration(seconds: 30),
+    ClockService? clockService,
     String Function()? newId,
-  }) : newId = newId ?? const Uuid().v4;
+  }) : newId = newId ?? const Uuid().v4,
+       clockService =
+           clockService ??
+           ClockService(
+             scope: context.scope,
+             clock: clock,
+             monotonic: StopwatchClock(),
+             initialEstimate: context.estimate,
+           ) {
+    if (this.clockService.scope != context.scope) {
+      throw ArgumentError('Estimativa temporal de outro contexto.');
+    }
+    refreshTime(notify: false);
+  }
   final MarkRepository repository;
   final EmployeeContext context;
   final Clock clock;
+  final ClockService clockService;
+  late ClockMoment preview;
+  late ClockSnapshot timeState;
+  String? get clockWarning => timeState.warning(context.clockLimitSeconds);
+  String? get confirmationOccurredIso => _awaitingConfirmation?.occurredIso;
+
+  void refreshTime({bool notify = true}) {
+    preview = clockService.read();
+    timeState = clockService.snapshot(preview);
+    if (notify) notifyListeners();
+  }
+
   // null means observation unavailable; no network access is required.
   final bool? Function() offline;
   final String Function() newId;
@@ -58,6 +85,7 @@ class MarkViewModel extends ChangeNotifier {
 
   Future<void> load() async {
     if (busy) return;
+    refreshTime(notify: false);
     busy = true;
     notifyListeners();
     try {
@@ -80,7 +108,10 @@ class MarkViewModel extends ChangeNotifier {
 
   Future<void> register() async {
     if (busy || !ready || confirmation != null) return;
-    final tappedAt = clock.now(); // capture before any await
+    final moment = clockService
+        .read(); // Freeze time and estimate before any await.
+    final tappedAt = moment.wall;
+    final temporal = clockService.snapshot(moment);
     final observedOffline = offline();
     busy = true;
     error = message = null;
@@ -94,7 +125,7 @@ class MarkViewModel extends ChangeNotifier {
         return;
       }
       final type = MarkType.values[persisted.length];
-      final estimate = context.estimate;
+      final estimate = temporal.estimate;
       final mark = Mark(
         scope: context.scope,
         day: reference,
@@ -115,11 +146,17 @@ class MarkViewModel extends ChangeNotifier {
           'offset_original_minutos': tappedAt.timeZoneOffset.inMinutes,
           'desvio_relogio_segundos': estimate?.seconds,
           'clock_offset_ms': estimate?.offsetMs,
-          'clock_estimate_state': estimate == null ? 'unmeasured' : 'available',
-          'clock_measured_at': estimate?.measuredAt.toUtc().toIso8601String(),
-          'clock_sample_age_ms': estimate == null
-              ? null
-              : tappedAt.difference(estimate.measuredAt).inMilliseconds,
+          'clock_estimate_state': temporal.availability.name,
+          'clock_estimate_reason': temporal.reason,
+          'clock_measured_at': temporal.lastEstimate?.measuredAt
+              .toUtc()
+              .toIso8601String(),
+          'clock_sample_age_ms': temporal.ageMs,
+          'clock_last_offset_ms': temporal.lastEstimate?.offsetMs,
+          'clock_server_timestamp': temporal.lastEstimate?.serverTimestamp
+              ?.toIso8601String(),
+          'clock_round_trip_ms': temporal.lastEstimate?.roundTripMs,
+          'clock_measurement_source': temporal.lastEstimate?.source,
           'registrado_offline': observedOffline,
           'posicao': null,
           'location_state': 'unavailable',

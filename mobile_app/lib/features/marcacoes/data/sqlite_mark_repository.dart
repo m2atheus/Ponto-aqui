@@ -8,7 +8,7 @@ import '../domain/mark.dart';
 class MarkDatabase extends GeneratedDatabase {
   MarkDatabase(super.executor);
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
   @override
   Iterable<TableInfo<Table, Object?>> get allTables => const [];
   @override
@@ -33,11 +33,22 @@ class MarkDatabase extends GeneratedDatabase {
       await customStatement(
         "CREATE TRIGGER immutable_marks_delete BEFORE DELETE ON marks BEGIN SELECT RAISE(ABORT, 'immutable evidence'); END",
       );
+      await _createClockEstimates();
+    },
+    onUpgrade: (m, from, to) async {
+      if (from < 2) await transaction(_createClockEstimates);
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
       await customStatement('PRAGMA synchronous = FULL');
     },
+  );
+
+  Future<void> _createClockEstimates() => customStatement(
+    '''CREATE TABLE clock_estimates (
+    scope TEXT PRIMARY KEY NOT NULL, offset_ms INTEGER NOT NULL,
+    measured_at TEXT NOT NULL, server_timestamp TEXT NOT NULL,
+    round_trip_ms INTEGER NOT NULL CHECK(round_trip_ms >= 0), source TEXT NOT NULL)''',
   );
 }
 
