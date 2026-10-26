@@ -1,5 +1,8 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../widgets/smart_polling.dart';
 
 import '../../models/auth_session.dart';
 import '../../models/funcionario.dart';
@@ -17,7 +20,15 @@ class FuncionariosScreen extends ConsumerStatefulWidget {
   ConsumerState<FuncionariosScreen> createState() => _FuncionariosScreenState();
 }
 
-class _FuncionariosScreenState extends ConsumerState<FuncionariosScreen> {
+class _FuncionariosScreenState extends ConsumerState<FuncionariosScreen>
+    with WidgetsBindingObserver, SmartPolling<FuncionariosScreen> {
+  @override
+  bool get pollingEnabled => !_ocupado;
+
+  @override
+  Future<void> refreshForPolling(CancelToken cancelToken) =>
+      ref.read(funcionariosProvider.notifier).refreshSilently(cancelToken);
+
   final _scroll = ScrollController();
   bool _dialogAberto = false;
   bool _confirmando = false;
@@ -215,13 +226,6 @@ class _FuncionariosScreenState extends ConsumerState<FuncionariosScreen> {
                 onPressed: podeGravar ? _formulario : null,
                 icon: const Icon(Icons.add),
                 label: const Text('Novo Funcionário'),
-              ),
-              IconButton(
-                tooltip: 'Atualizar funcionários',
-                onPressed: podeAtualizar
-                    ? () => ref.invalidate(funcionariosProvider)
-                    : null,
-                icon: const Icon(Icons.refresh),
               ),
             ],
           ),

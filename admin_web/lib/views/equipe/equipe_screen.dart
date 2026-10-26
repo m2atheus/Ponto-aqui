@@ -1,5 +1,8 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../widgets/smart_polling.dart';
 
 import '../../models/funcionario.dart';
 import '../../models/w06.dart';
@@ -14,7 +17,15 @@ class EquipeScreen extends ConsumerStatefulWidget {
   ConsumerState<EquipeScreen> createState() => _EquipeScreenState();
 }
 
-class _EquipeScreenState extends ConsumerState<EquipeScreen> {
+class _EquipeScreenState extends ConsumerState<EquipeScreen>
+    with WidgetsBindingObserver, SmartPolling<EquipeScreen> {
+  @override
+  bool get pollingEnabled => !_dialogAberto;
+
+  @override
+  Future<void> refreshForPolling(CancelToken cancelToken) =>
+      ref.read(w06Provider.notifier).refreshSilently(cancelToken);
+
   final _tabelaScroll = ScrollController();
   String _busca = '';
   bool _dialogAberto = false;
@@ -82,22 +93,6 @@ class _EquipeScreenState extends ConsumerState<EquipeScreen> {
                   'Selecione um funcionário para acompanhar seu histórico de jornada.',
                 ),
                 const SizedBox(height: 24),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48),
-                    backgroundColor: colors.surface,
-                    side: BorderSide(color: colors.outlineVariant, width: 0.6),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  onPressed: _dialogAberto
-                      ? null
-                      : () => ref.invalidate(w06Provider),
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Atualizar dados'),
-                ),
-                const SizedBox(height: 20),
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final width = constraints.maxWidth < 600
@@ -143,7 +138,7 @@ class _EquipeScreenState extends ConsumerState<EquipeScreen> {
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(16),
                         borderSide: BorderSide(color: colors.secondary),
                       ),
                     ),
@@ -201,16 +196,8 @@ class _EquipeSurface extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => Card(
-    margin: EdgeInsets.zero,
-    elevation: 0.5,
-    shadowColor: Colors.black.withValues(alpha: 0.08),
-    color: Theme.of(context).colorScheme.surface,
-    surfaceTintColor: Colors.transparent,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-    clipBehavior: Clip.antiAlias,
-    child: child,
-  );
+  Widget build(BuildContext context) =>
+      Card(margin: EdgeInsets.zero, child: child);
 }
 
 class _EquipeTable extends StatelessWidget {

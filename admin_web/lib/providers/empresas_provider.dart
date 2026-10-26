@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/auth_session.dart';
@@ -5,6 +6,8 @@ import '../models/empresa.dart';
 import '../services/empresa_service.dart';
 import 'api_providers.dart';
 import 'auth_provider.dart';
+import 'silent_refresh.dart';
+import 'dashboard_provider.dart';
 
 final empresaServiceProvider = Provider<EmpresaService>(
   (ref) => EmpresaService(ref.watch(dioProvider)),
@@ -15,7 +18,12 @@ final empresasProvider =
       retry: (count, error) => null,
     );
 
-class EmpresasController extends AsyncNotifier<List<Empresa>> {
+class EmpresasController extends AsyncNotifier<List<Empresa>>
+    with SilentRefresh<List<Empresa>> {
+  @override
+  Future<List<Empresa>> loadForPolling(CancelToken cancelToken) =>
+      ref.read(empresaServiceProvider).listar(cancelToken: cancelToken);
+
   @override
   Future<List<Empresa>> build() async {
     final session = ref.watch(authProvider).asData?.value;
@@ -53,6 +61,7 @@ class EmpresasController extends AsyncNotifier<List<Empresa>> {
         if (item.id == empresa.id) empresa else item,
       if (!lista.any((item) => item.id == empresa.id)) empresa,
     ]);
+    ref.invalidate(dashboardProvider);
   }
 
   Future<void> salvar(Empresa empresa, {String? senhaInicial}) =>

@@ -158,6 +158,19 @@ class ManagementApiFake implements HttpClientAdapter {
     }
     if (options.uri.path.contains('/funcionarios')) {
       if (options.method == 'GET') {
+        if (options.uri.path.endsWith('/busca')) {
+          final q = (options.queryParameters['q'] as String).toLowerCase();
+          return jsonResponse({
+            'funcionarios': funcionarios
+                .where(
+                  (f) => '${f['nome']} ${f['matricula']}'
+                      .toLowerCase()
+                      .contains(q),
+                )
+                .take(20)
+                .toList(),
+          });
+        }
         return jsonResponse({'funcionarios': funcionarios});
       }
       final values = Map<String, dynamic>.from(options.data as Map);

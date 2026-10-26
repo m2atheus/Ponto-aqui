@@ -10,6 +10,7 @@ import '../repositories/repository_failure.dart';
 import '../repositories/setor_repository.dart';
 import 'api_providers.dart';
 import 'auth_provider.dart';
+import 'silent_refresh.dart';
 import 'funcionarios_provider.dart';
 import 'escalas_provider.dart';
 import 'w06_provider.dart';
@@ -56,7 +57,8 @@ final alocacoesProvider =
       retry: (count, error) => null,
     );
 
-class AlocacoesController extends AsyncNotifier<AlocacoesData> {
+class AlocacoesController extends AsyncNotifier<AlocacoesData>
+    with SilentRefresh<AlocacoesData> {
   @override
   Future<AlocacoesData> build() async {
     final auth = ref.watch(authProvider).asData?.value;
@@ -66,10 +68,20 @@ class AlocacoesController extends AsyncNotifier<AlocacoesData> {
     _sessaoRh(auth);
     final cancel = CancelToken();
     ref.onDispose(() => cancel.cancel('Sessão ou consulta encerrada.'));
-    final alocacoes = ref.watch(alocacaoRepositoryProvider);
-    final funcionarios = ref.watch(funcionarioRepositoryProvider);
-    final setores = ref.watch(setorRepositoryProvider);
-    final escalas = ref.watch(escalaRepositoryProvider);
+    ref.watch(alocacaoRepositoryProvider);
+    ref.watch(funcionarioRepositoryProvider);
+    ref.watch(setorRepositoryProvider);
+    ref.watch(escalaRepositoryProvider);
+    return loadForPolling(cancel);
+  }
+
+  @override
+  Future<AlocacoesData> loadForPolling(CancelToken cancel) async {
+    _sessaoRh(ref.read(authProvider).asData?.value);
+    final alocacoes = ref.read(alocacaoRepositoryProvider);
+    final funcionarios = ref.read(funcionarioRepositoryProvider);
+    final setores = ref.read(setorRepositoryProvider);
+    final escalas = ref.read(escalaRepositoryProvider);
     // Consultas independentes; aguarda todas, inclusive em falha, antes de
     // liberar uma nova tentativa com dados consistentes da mesma sessão.
     final results = await Future.wait<Object>([

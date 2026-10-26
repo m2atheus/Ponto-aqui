@@ -1,5 +1,8 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../widgets/smart_polling.dart';
 
 import '../widgets/responsive_table_container.dart';
 
@@ -19,7 +22,15 @@ class AlocacoesScreen extends ConsumerStatefulWidget {
   ConsumerState<AlocacoesScreen> createState() => _AlocacoesScreenState();
 }
 
-class _AlocacoesScreenState extends ConsumerState<AlocacoesScreen> {
+class _AlocacoesScreenState extends ConsumerState<AlocacoesScreen>
+    with WidgetsBindingObserver, SmartPolling<AlocacoesScreen> {
+  @override
+  bool get pollingEnabled => !_dialogAberto;
+
+  @override
+  Future<void> refreshForPolling(CancelToken cancelToken) =>
+      ref.read(alocacoesProvider.notifier).refreshSilently(cancelToken);
+
   final _scroll = ScrollController();
   bool _dialogAberto = false;
 
@@ -110,13 +121,6 @@ class _AlocacoesScreenState extends ConsumerState<AlocacoesScreen> {
                     : null,
                 icon: const Icon(Icons.add),
                 label: const Text('Nova Alocação'),
-              ),
-              IconButton(
-                tooltip: 'Atualizar alocações',
-                onPressed: !session.isMock && !dados.isLoading && !_dialogAberto
-                    ? () => ref.invalidate(alocacoesProvider)
-                    : null,
-                icon: const Icon(Icons.refresh),
               ),
             ],
           ),

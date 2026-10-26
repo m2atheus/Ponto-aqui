@@ -32,12 +32,16 @@ class EmpresaService {
     }
   }
 
-  Future<List<Empresa>> listar() => _request(() async {
-    final response = await _dio.get<Map<String, dynamic>>('empresas');
-    return (response.data!['empresas'] as List)
-        .map((item) => Empresa.fromJson(item as Map<String, dynamic>))
-        .toList();
-  });
+  Future<List<Empresa>> listar({CancelToken? cancelToken}) =>
+      _request(() async {
+        final response = await _dio.get<Map<String, dynamic>>(
+          'empresas',
+          cancelToken: cancelToken,
+        );
+        return (response.data!['empresas'] as List)
+            .map((item) => Empresa.fromJson(item as Map<String, dynamic>))
+            .toList();
+      });
 
   Future<Empresa> salvar(Empresa empresa, {String? senhaInicial}) =>
       _request(() async {

@@ -86,11 +86,6 @@ class W06Table extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Card(
     margin: EdgeInsets.zero,
-    elevation: 0.5,
-    shadowColor: Colors.black.withValues(alpha: 0.08),
-    surfaceTintColor: Colors.transparent,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-    clipBehavior: Clip.antiAlias,
     child: rows.isEmpty
         ? Padding(padding: const EdgeInsets.all(28), child: Text(emptyMessage))
         : ResponsiveTableContainer(

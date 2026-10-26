@@ -46,6 +46,21 @@ class FuncionarioRepository {
     return _parse(json.containsKey('funcionario') ? json['funcionario'] : json);
   }
 
+  Future<List<Funcionario>> buscar(String texto, {CancelToken? cancelToken}) =>
+      repositoryRequest(() async {
+        final q = texto.trim();
+        final response = await _dio.get<Object?>(
+          'funcionarios/busca',
+          queryParameters: {'q': q},
+          cancelToken: cancelToken,
+        );
+        final items = managementObject(response.data)['funcionarios'];
+        if (items is! List || items.length > 20) {
+          throw const FormatException('Resultados de busca inválidos.');
+        }
+        return List<Funcionario>.unmodifiable(items.map(_parse));
+      });
+
   Future<Funcionario> criar(Funcionario dto) => repositoryRequest(() async {
     _validate(dto);
     final response = await _dio.post<Object?>(

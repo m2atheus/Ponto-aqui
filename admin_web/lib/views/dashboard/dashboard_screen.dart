@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,22 +6,35 @@ import 'package:go_router/go_router.dart';
 import '../../models/auth_session.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/dashboard_provider.dart';
-import '../../providers/empresas_provider.dart';
 import '../../theme/app_theme.dart';
+import '../widgets/brand_backdrop.dart';
+import '../widgets/smart_polling.dart';
 
-class DashboardScreen extends ConsumerWidget {
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends ConsumerState<DashboardScreen>
+    with WidgetsBindingObserver, SmartPolling<DashboardScreen> {
+  @override
+  Future<void> refreshForPolling(CancelToken cancelToken) =>
+      ref.read(dashboardProvider.notifier).refreshSilently(cancelToken);
+
+  @override
+  Widget build(BuildContext context) {
     final session = ref.watch(authProvider).asData?.value;
     if (session == null) return const SizedBox.shrink();
+    final dados = ref.watch(dashboardProvider);
+    final indicadores = dados.asData?.value;
     final List<Widget> cards;
     switch (session.user.role) {
       case UserRole.superadmin:
         cards = [
           _ResumoCard(
             titulo: 'Total de Empresas Cadastradas',
-            valor: ref.watch(empresasProvider).asData?.value.length,
+            valor: indicadores?['empresas'],
             icone: Icons.business_outlined,
             acao: FilledButton.icon(
               onPressed: () => context.go('/empresas/nova'),
@@ -30,7 +44,6 @@ class DashboardScreen extends ConsumerWidget {
           ),
         ];
       case UserRole.rh:
-        final indicadores = ref.watch(dashboardProvider).asData?.value;
         cards = [
           _ResumoCard(
             titulo: 'Total de Funcionários',
@@ -49,10 +62,8 @@ class DashboardScreen extends ConsumerWidget {
           ),
         ];
       case UserRole.gestor:
-        final justificativasPendentes = ref
-            .watch(dashboardProvider)
-            .asData
-            ?.value['justificativas_pendentes'];
+        final justificativasPendentes =
+            indicadores?['justificativas_pendentes'];
         cards = [
           _ResumoCard(
             titulo: 'Justificativas Pendentes de Aprovação',
@@ -65,7 +76,7 @@ class DashboardScreen extends ConsumerWidget {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Align(
-        alignment: Alignment.topLeft,
+        alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1200),
           child: Column(
@@ -87,25 +98,13 @@ class DashboardScreen extends ConsumerWidget {
                   fontSize: 12,
                 ),
               ),
-              if (session.user.role == UserRole.superadmin &&
-                  ref.watch(empresasProvider).hasError)
+              if (dados.hasError && !dados.hasValue)
                 Text(
-                  ref.watch(empresasProvider).error.toString(),
+                  dados.error.toString(),
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
-              if (session.user.role != UserRole.superadmin &&
-                  ref.watch(dashboardProvider).hasError)
-                Text(
-                  ref.watch(dashboardProvider).error.toString(),
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              OutlinedButton.icon(
-                onPressed: () => session.user.role == UserRole.superadmin
-                    ? ref.invalidate(empresasProvider)
-                    : ref.invalidate(dashboardProvider),
-                icon: const Icon(Icons.refresh),
-                label: const Text('Atualizar indicadores'),
-              ),
+              const SizedBox(height: 24),
+              _DashboardWelcome(name: session.user.name),
               const SizedBox(height: 24),
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -127,54 +126,41 @@ class DashboardScreen extends ConsumerWidget {
                 },
               ),
               const SizedBox(height: 28),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: BrandColors.navy,
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Wrap(
-                  spacing: 20,
-                  runSpacing: 12,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.schedule_outlined,
-                      color: Color(0xFF77DED4),
-                      size: 32,
+              Text(
+                'Acesso rápido',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  if (session.user.role == UserRole.superadmin)
+                    OutlinedButton.icon(
+                      onPressed: () => context.go('/empresas'),
+                      icon: const Icon(Icons.business_outlined, size: 18),
+                      label: const Text('Gerenciar empresas'),
                     ),
-                    ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: (MediaQuery.sizeOf(context).width - 96).clamp(
-                          0.0,
-                          1000.0,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Olá, ${session.user.name.split(' ').first}.',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Acompanhe sua operação pelo menu de navegação.',
-                            style: TextStyle(
-                              color: Color(0xFFC5DEE7),
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
+                  if (session.user.role.canManageCompany) ...[
+                    OutlinedButton.icon(
+                      onPressed: () => context.go('/funcionarios'),
+                      icon: const Icon(Icons.people_outline, size: 18),
+                      label: const Text('Gerenciar funcionários'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => context.go('/relatorios'),
+                      icon: const Icon(Icons.assessment_outlined, size: 18),
+                      label: const Text('Consultar relatórios'),
                     ),
                   ],
-                ),
+                  if (session.user.role == UserRole.rh ||
+                      session.user.role == UserRole.gestor)
+                    OutlinedButton.icon(
+                      onPressed: () => context.go('/equipe'),
+                      icon: const Icon(Icons.groups_outlined, size: 18),
+                      label: const Text('Acompanhar equipe'),
+                    ),
+                ],
               ),
             ],
           ),
@@ -182,6 +168,68 @@ class DashboardScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _DashboardWelcome extends StatelessWidget {
+  const _DashboardWelcome({required this.name});
+  final String name;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          colors: [BrandColors.navy, Color(0xFF124A63), Color(0xFF176E73)],
+        ),
+      ),
+      padding: const EdgeInsets.all(28),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'SUA OPERAÇÃO, EM SINTONIA',
+                  style: TextStyle(
+                    color: Color(0xFF8FE2D6),
+                    fontSize: 10,
+                    letterSpacing: 1.6,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Olá, ${name.trim().split(' ').first}.',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.7,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Sua equipe. Seu tempo. Tudo no lugar.',
+                  style: TextStyle(
+                    color: Color(0xFFD1E8EB),
+                    height: 1.6,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (constraints.maxWidth >= 650) ...[
+            const SizedBox(width: 28),
+            const BrandJourneyArt(),
+          ],
+        ],
+      ),
+    ),
+  );
 }
 
 class _ResumoCard extends StatelessWidget {
@@ -221,8 +269,14 @@ class _ResumoCard extends StatelessWidget {
                   : Theme.of(context).colorScheme.onSecondaryContainer,
             ),
           ),
-          const SizedBox(height: 16),
-          Text(titulo, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 20),
+          Text(
+            titulo,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
           const SizedBox(height: 12),
           Text(
             valor == null ? '—' : '$valor',

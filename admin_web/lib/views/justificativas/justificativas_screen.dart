@@ -1,5 +1,9 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../widgets/smart_polling.dart';
+
 import 'package:file_picker/file_picker.dart';
 
 import '../../models/auth_session.dart';
@@ -16,7 +20,15 @@ class JustificativasScreen extends ConsumerStatefulWidget {
       _JustificativasScreenState();
 }
 
-class _JustificativasScreenState extends ConsumerState<JustificativasScreen> {
+class _JustificativasScreenState extends ConsumerState<JustificativasScreen>
+    with WidgetsBindingObserver, SmartPolling<JustificativasScreen> {
+  @override
+  bool get pollingEnabled => !_dialogAberto;
+
+  @override
+  Future<void> refreshForPolling(CancelToken cancelToken) =>
+      ref.read(w06Provider.notifier).refreshSilently(cancelToken);
+
   bool _dialogAberto = false;
   Future<void> _cadastrar(
     W06Data data, {
@@ -153,13 +165,6 @@ class _JustificativasScreenState extends ConsumerState<JustificativasScreen> {
                 'Gerencie feriados e afastamentos que justificam a jornada.',
               ),
               const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed: _dialogAberto
-                    ? null
-                    : () => ref.invalidate(w06Provider),
-                icon: const Icon(Icons.refresh),
-                label: const Text('Atualizar dados'),
-              ),
               if (!podeCadastrar)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 8),

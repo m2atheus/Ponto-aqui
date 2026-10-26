@@ -5,8 +5,11 @@ import '../../models/w06.dart';
 import '../../models/auth_session.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/w06_provider.dart';
+import '../../providers/funcionarios_provider.dart';
+import '../../router/access_policy.dart';
 import '../../utils/civil_date.dart';
 import '../widgets/w06_widgets.dart';
+import '../widgets/funcionario_autocomplete.dart';
 import 'ponto_ajuste_dialog.dart';
 
 const _meses = [
@@ -42,13 +45,9 @@ class _RelatoriosScreenState extends ConsumerState<RelatoriosScreen> {
   int _pedido = 0;
   String? _erro;
   EspelhoMensal? _espelho;
-  W06Data? _dadosDoEspelho;
+  String? _sessaoDoEspelho;
 
-  Future<void> _ajustar(
-    W06Data data,
-    EspelhoMensal espelho, [
-    MarcacaoEspelho? ponto,
-  ]) async {
+  Future<void> _ajustar(EspelhoMensal espelho, [MarcacaoEspelho? ponto]) async {
     final sessao = ref.read(authProvider).asData?.value;
     if (_dialogAberto ||
         _carregando ||
@@ -77,7 +76,7 @@ class _RelatoriosScreenState extends ConsumerState<RelatoriosScreen> {
             ? DateTime.utc(espelho.ano, espelho.mes, 1, 12)
             : DateTime.parse(ponto.dataHora),
         recarregar: () async {
-          if (mesmaSessao()) await _gerar(data, propagarErro: true);
+          if (mesmaSessao()) await _gerar(propagarErro: true);
         },
       );
     } catch (error) {
@@ -104,7 +103,7 @@ class _RelatoriosScreenState extends ConsumerState<RelatoriosScreen> {
     _carregando = false;
   });
 
-  Future<void> _gerar(W06Data data, {bool propagarErro = false}) async {
+  Future<void> _gerar({bool propagarErro = false}) async {
     if (_carregando || !_form.currentState!.validate()) return;
     final sessionToken = ref.read(authProvider).asData?.value?.accessToken;
     final pedido = ++_pedido;
@@ -123,13 +122,12 @@ class _RelatoriosScreenState extends ConsumerState<RelatoriosScreen> {
           );
       if (!mounted ||
           pedido != _pedido ||
-          sessionToken != ref.read(authProvider).asData?.value?.accessToken ||
-          !identical(ref.read(w06Provider).asData?.value, data)) {
+          sessionToken != ref.read(authProvider).asData?.value?.accessToken) {
         return;
       }
       setState(() {
         _espelho = resultado;
-        _dadosDoEspelho = data;
+        _sessaoDoEspelho = sessionToken;
       });
     } catch (error) {
       if (mounted &&
@@ -145,336 +143,327 @@ class _RelatoriosScreenState extends ConsumerState<RelatoriosScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => W06Content(
-    path: '/relatorios',
-    builder: (data) {
-      final espelho = identical(_dadosDoEspelho, data) ? _espelho : null;
-      return W06PageLayout(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
+  Widget build(BuildContext context) {
+    final session = ref.watch(authProvider).asData?.value;
+    if (session == null ||
+        !session.expiresAt.isAfter(DateTime.now()) ||
+        !AccessPolicy.allows(session.user.role, '/relatorios')) {
+      return const Center(
+        child: Text('Seu perfil não tem acesso a esta página.'),
+      );
+    }
+    if (session.isMock) {
+      return const Center(
+        child: Text(
+          'Entre com uma conta real da empresa para consultar o banco.',
+        ),
+      );
+    }
+    final espelho = _sessaoDoEspelho == session.accessToken ? _espelho : null;
+    return W06PageLayout(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          Text('Relatórios', style: Theme.of(context).textTheme.headlineMedium),
+          const SizedBox(height: 8),
+          const Text(
+            'Consulte o espelho mensal considerando a escala vigente em cada período.',
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Form(
+                key: _form,
+                child: LayoutBuilder(
+                  builder: (context, constraints) => Wrap(
+                    spacing: 16,
+                    runSpacing: 16,
+                    // A ajuda e os erros do funcionário não deslocam os filtros.
+                    crossAxisAlignment: WrapCrossAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: constraints.maxWidth < 400
+                            ? constraints.maxWidth
+                            : 320,
+                        child: FuncionarioAutocomplete(
+                          key: ObjectKey(session),
+                          repository: ref.watch(funcionarioRepositoryProvider),
+                          enabled: !_carregando && !_dialogAberto,
+                          onChanged: (f) =>
+                              _alterar(() => _funcionarioId = f?.id),
+                        ),
+                      ),
+                      SizedBox(
+                        width: constraints.maxWidth < 200
+                            ? constraints.maxWidth
+                            : 190,
+                        child: DropdownButtonFormField<int>(
+                          key: const Key('relatorio-mes'),
+                          initialValue: _mes,
+                          isExpanded: true,
+                          decoration: const InputDecoration(labelText: 'Mês'),
+                          items: [
+                            for (var i = 0; i < 12; i++)
+                              DropdownMenuItem(
+                                value: i + 1,
+                                child: Text(_meses[i]),
+                              ),
+                          ],
+                          onChanged: _carregando || _dialogAberto
+                              ? null
+                              : (v) => _alterar(() => _mes = v!),
+                        ),
+                      ),
+                      SizedBox(
+                        width: constraints.maxWidth < 130
+                            ? constraints.maxWidth
+                            : 120,
+                        child: TextFormField(
+                          key: const Key('relatorio-ano'),
+                          controller: _anoController,
+                          enabled: !_carregando && !_dialogAberto,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Ano',
+                            hintText: 'AAAA',
+                          ),
+                          onChanged: (_) => _alterar(() {}),
+                          validator: (value) {
+                            final ano = int.tryParse(value?.trim() ?? '');
+                            return ano == null || ano < 1900 || ano > 2100
+                                ? '1900 a 2100.'
+                                : null;
+                          },
+                        ),
+                      ),
+                      FilledButton.icon(
+                        key: const Key('gerar-espelho'),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(0, 60),
+                        ),
+                        onPressed: _carregando || _dialogAberto
+                            ? null
+                            : () => _gerar(),
+                        icon: const Icon(Icons.summarize_outlined),
+                        label: Text(
+                          _carregando ? 'Consultando…' : 'Consultar espelho',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (_carregando)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: LinearProgressIndicator(),
+            ),
+          if (_erro != null)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                _erro!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          if (espelho == null && !_carregando && _erro == null)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'Selecione o funcionário e o mês para consultar o espelho.',
+              ),
+            ),
+          if (espelho != null) ...[
+            const SizedBox(height: 20),
             Text(
-              'Relatórios',
-              style: Theme.of(context).textTheme.headlineMedium,
+              '${espelho.funcionario.nome} · ${_meses[espelho.mes - 1]} / ${espelho.ano}',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            if (ref.watch(authProvider).asData?.value?.user.role ==
+                UserRole.rh) ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Tooltip(
+                  message: espelho.usuarioId == null
+                      ? 'Vincule uma conta de usuário ao funcionário para inserir ajustes.'
+                      : 'Adicionar uma batida aprovada pelo RH',
+                  child: FilledButton.icon(
+                    key: const Key('inserir-ponto-manual'),
+                    onPressed:
+                        _carregando ||
+                            _dialogAberto ||
+                            espelho.usuarioId == null
+                        ? null
+                        : () => _ajustar(espelho),
+                    icon: const Icon(Icons.add_alarm),
+                    label: const Text('Inserir Ponto Manual'),
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            const Text(
+              'Feriados e afastamentos em verde abonam a jornada; o histórico define o setor de cada dia.',
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                _Total(
+                  label: 'Previstas',
+                  minutos: espelho.totalApi('previstos'),
+                ),
+                _Total(
+                  label: 'Trabalhadas',
+                  minutos: espelho.totalApi('trabalhados'),
+                ),
+                _Total(
+                  label: 'Abonadas',
+                  minutos: espelho.totalApi('abonados'),
+                  verde: true,
+                ),
+                _Total(label: 'Faltas', minutos: espelho.totalApi('faltas')),
+                _Total(label: 'Atrasos', minutos: espelho.totalApi('atrasos')),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (!espelho.apuracaoDefinitiva)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    'Apuração preliminar · Fuso: ${espelho.fusoHorario}. '
+                    '${espelho.temPendencias ? 'Há marcações ou ajustes que exigem análise.' : 'Confira os dados antes do fechamento.'}',
+                  ),
+                ),
+              ),
+            W06Table(
+              columns: const [
+                DataColumn(label: Text('Data')),
+                DataColumn(label: Text('Setor / Escala histórica')),
+                DataColumn(label: Text('Situação')),
+                DataColumn(label: Text('Previstas')),
+                DataColumn(label: Text('Trabalhadas')),
+                DataColumn(label: Text('Abonadas')),
+                DataColumn(label: Text('Falta / Atraso')),
+                DataColumn(label: Text('Motivo')),
+              ],
+              rows: [
+                for (final dia in espelho.dias)
+                  DataRow(
+                    key: ValueKey('espelho-${dia.data}'),
+                    color: dia.justificado
+                        ? WidgetStatePropertyAll(
+                            Colors.green.withValues(alpha: .07),
+                          )
+                        : null,
+                    cells: [
+                      DataCell(Text(civilDateDisplay(dia.data))),
+                      DataCell(
+                        SizedBox(
+                          width: 200,
+                          child: Text(
+                            '${dia.setor ?? '—'}\n${dia.escala ?? 'Sem escala'}',
+                          ),
+                        ),
+                      ),
+                      DataCell(_Situacao(dia: dia)),
+                      DataCell(Text(w06Hours(dia.previstos))),
+                      DataCell(Text(w06Hours(dia.trabalhados))),
+                      DataCell(Text(w06Hours(dia.abonados))),
+                      DataCell(
+                        Text(
+                          '${w06Hours(dia.faltas)} / ${w06Hours(dia.atrasos)}',
+                        ),
+                      ),
+                      DataCell(
+                        SizedBox(
+                          width: 220,
+                          child: Text(
+                            dia.descricao,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Batidas do funcionário',
+              style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 8),
             const Text(
-              'Consulte o espelho mensal considerando a escala vigente em cada período.',
+              'As batidas originais são preservadas. Correções são salvas separadamente como ajustes.',
             ),
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Form(
-                  key: _form,
-                  child: LayoutBuilder(
-                    builder: (context, constraints) => Wrap(
-                      spacing: 16,
-                      runSpacing: 16,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: constraints.maxWidth < 400
-                              ? constraints.maxWidth
-                              : 320,
-                          child: DropdownButtonFormField<String>(
-                            key: const Key('relatorio-funcionario'),
-                            initialValue: _funcionarioId,
-                            isExpanded: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Funcionário',
-                            ),
-                            items: [
-                              for (final f in data.funcionarios)
-                                DropdownMenuItem(
-                                  value: f.id,
-                                  child: Text(
-                                    '${f.nome} · ${f.matricula}',
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                            ],
-                            onChanged: _carregando || _dialogAberto
-                                ? null
-                                : (v) => _alterar(() => _funcionarioId = v),
-                            validator: (v) =>
-                                v == null ? 'Selecione um funcionário.' : null,
-                          ),
-                        ),
-                        SizedBox(
-                          width: constraints.maxWidth < 200
-                              ? constraints.maxWidth
-                              : 190,
-                          child: DropdownButtonFormField<int>(
-                            key: const Key('relatorio-mes'),
-                            initialValue: _mes,
-                            isExpanded: true,
-                            decoration: const InputDecoration(labelText: 'Mês'),
-                            items: [
-                              for (var i = 0; i < 12; i++)
-                                DropdownMenuItem(
-                                  value: i + 1,
-                                  child: Text(_meses[i]),
-                                ),
-                            ],
-                            onChanged: _carregando || _dialogAberto
-                                ? null
-                                : (v) => _alterar(() => _mes = v!),
-                          ),
-                        ),
-                        SizedBox(
-                          width: constraints.maxWidth < 130
-                              ? constraints.maxWidth
-                              : 120,
-                          child: TextFormField(
-                            key: const Key('relatorio-ano'),
-                            controller: _anoController,
-                            enabled: !_carregando && !_dialogAberto,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: 'Ano',
-                              hintText: 'AAAA',
-                            ),
-                            onChanged: (_) => _alterar(() {}),
-                            validator: (value) {
-                              final ano = int.tryParse(value?.trim() ?? '');
-                              return ano == null || ano < 1900 || ano > 2100
-                                  ? '1900 a 2100.'
-                                  : null;
-                            },
-                          ),
-                        ),
-                        FilledButton.icon(
-                          key: const Key('gerar-espelho'),
-                          onPressed:
-                              _carregando ||
-                                  _dialogAberto ||
-                                  data.funcionarios.isEmpty
-                              ? null
-                              : () => _gerar(data),
-                          icon: const Icon(Icons.summarize_outlined),
-                          label: Text(
-                            _carregando ? 'Consultando…' : 'Consultar espelho',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            if (_carregando)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: LinearProgressIndicator(),
-              ),
-            if (_erro != null)
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  _erro!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              ),
-            if (espelho == null && !_carregando && _erro == null)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'Selecione o funcionário e o mês para consultar o espelho.',
-                ),
-              ),
-            if (espelho != null) ...[
-              const SizedBox(height: 20),
-              Text(
-                '${espelho.funcionario.nome} · ${_meses[espelho.mes - 1]} / ${espelho.ano}',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              if (ref.watch(authProvider).asData?.value?.user.role ==
-                  UserRole.rh) ...[
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Tooltip(
-                    message: espelho.usuarioId == null
-                        ? 'Vincule uma conta de usuário ao funcionário para inserir ajustes.'
-                        : 'Adicionar uma batida aprovada pelo RH',
-                    child: FilledButton.icon(
-                      key: const Key('inserir-ponto-manual'),
-                      onPressed:
-                          _carregando ||
-                              _dialogAberto ||
-                              espelho.usuarioId == null
-                          ? null
-                          : () => _ajustar(data, espelho),
-                      icon: const Icon(Icons.add_alarm),
-                      label: const Text('Inserir Ponto Manual'),
-                    ),
-                  ),
-                ),
+            const SizedBox(height: 12),
+            W06Table(
+              emptyMessage: 'Nenhuma batida original neste mês.',
+              columns: const [
+                DataColumn(label: Text('Data')),
+                DataColumn(label: Text('Hora')),
+                DataColumn(label: Text('Tipo')),
+                DataColumn(label: Text('Situação')),
+                DataColumn(label: Text('Ações')),
               ],
-              const SizedBox(height: 8),
-              const Text(
-                'Feriados e afastamentos em verde abonam a jornada; o histórico define o setor de cada dia.',
-              ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  _Total(
-                    label: 'Previstas',
-                    minutos: espelho.totalApi('previstos'),
-                  ),
-                  _Total(
-                    label: 'Trabalhadas',
-                    minutos: espelho.totalApi('trabalhados'),
-                  ),
-                  _Total(
-                    label: 'Abonadas',
-                    minutos: espelho.totalApi('abonados'),
-                    verde: true,
-                  ),
-                  _Total(label: 'Faltas', minutos: espelho.totalApi('faltas')),
-                  _Total(
-                    label: 'Atrasos',
-                    minutos: espelho.totalApi('atrasos'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              if (!espelho.apuracaoDefinitiva)
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      'Apuração preliminar · Fuso: ${espelho.fusoHorario}. '
-                      '${espelho.temPendencias ? 'Há marcações ou ajustes que exigem análise.' : 'Confira os dados antes do fechamento.'}',
-                    ),
-                  ),
-                ),
-              W06Table(
-                columns: const [
-                  DataColumn(label: Text('Data')),
-                  DataColumn(label: Text('Setor / Escala histórica')),
-                  DataColumn(label: Text('Situação')),
-                  DataColumn(label: Text('Previstas')),
-                  DataColumn(label: Text('Trabalhadas')),
-                  DataColumn(label: Text('Abonadas')),
-                  DataColumn(label: Text('Falta / Atraso')),
-                  DataColumn(label: Text('Motivo')),
-                ],
-                rows: [
-                  for (final dia in espelho.dias)
+              rows: [
+                for (final dia in espelho.dias)
+                  for (final ponto in dia.marcacoes)
                     DataRow(
-                      key: ValueKey('espelho-${dia.data}'),
-                      color: dia.justificado
-                          ? WidgetStatePropertyAll(
-                              Colors.green.withValues(alpha: .07),
-                            )
-                          : null,
+                      key: ValueKey('batida-${ponto.id}'),
                       cells: [
                         DataCell(Text(civilDateDisplay(dia.data))),
+                        DataCell(Text(ponto.dataHora.substring(11, 16))),
                         DataCell(
-                          SizedBox(
-                            width: 200,
-                            child: Text(
-                              '${dia.setor ?? '—'}\n${dia.escala ?? 'Sem escala'}',
-                            ),
-                          ),
-                        ),
-                        DataCell(_Situacao(dia: dia)),
-                        DataCell(Text(w06Hours(dia.previstos))),
-                        DataCell(Text(w06Hours(dia.trabalhados))),
-                        DataCell(Text(w06Hours(dia.abonados))),
-                        DataCell(
-                          Text(
-                            '${w06Hours(dia.faltas)} / ${w06Hours(dia.atrasos)}',
-                          ),
+                          Text(switch (ponto.tipo) {
+                            'InicioIntervalo' => 'Início do intervalo',
+                            'FimIntervalo' => 'Fim do intervalo',
+                            'Saida' => 'Saída',
+                            _ => ponto.tipo,
+                          }),
                         ),
                         DataCell(
-                          SizedBox(
-                            width: 220,
-                            child: Text(
-                              dia.descricao,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                          Text(switch (ponto.situacao) {
+                            'PendenteAnalise' => 'Pendente de análise',
+                            _ => ponto.situacao,
+                          }),
+                        ),
+                        DataCell(
+                          IconButton(
+                            key: ValueKey('editar-batida-${ponto.id}'),
+                            tooltip: 'Editar Batida',
+                            onPressed:
+                                _carregando ||
+                                    _dialogAberto ||
+                                    ref
+                                            .read(authProvider)
+                                            .asData
+                                            ?.value
+                                            ?.user
+                                            .role !=
+                                        UserRole.rh
+                                ? null
+                                : () => _ajustar(espelho, ponto),
+                            icon: const Icon(Icons.edit_outlined),
                           ),
                         ),
                       ],
                     ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'Batidas do funcionário',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'As batidas originais são preservadas. Correções são salvas separadamente como ajustes.',
-              ),
-              const SizedBox(height: 12),
-              W06Table(
-                emptyMessage: 'Nenhuma batida original neste mês.',
-                columns: const [
-                  DataColumn(label: Text('Data')),
-                  DataColumn(label: Text('Hora')),
-                  DataColumn(label: Text('Tipo')),
-                  DataColumn(label: Text('Situação')),
-                  DataColumn(label: Text('Ações')),
-                ],
-                rows: [
-                  for (final dia in espelho.dias)
-                    for (final ponto in dia.marcacoes)
-                      DataRow(
-                        key: ValueKey('batida-${ponto.id}'),
-                        cells: [
-                          DataCell(Text(civilDateDisplay(dia.data))),
-                          DataCell(Text(ponto.dataHora.substring(11, 16))),
-                          DataCell(
-                            Text(switch (ponto.tipo) {
-                              'InicioIntervalo' => 'Início do intervalo',
-                              'FimIntervalo' => 'Fim do intervalo',
-                              'Saida' => 'Saída',
-                              _ => ponto.tipo,
-                            }),
-                          ),
-                          DataCell(
-                            Text(switch (ponto.situacao) {
-                              'PendenteAnalise' => 'Pendente de análise',
-                              _ => ponto.situacao,
-                            }),
-                          ),
-                          DataCell(
-                            IconButton(
-                              key: ValueKey('editar-batida-${ponto.id}'),
-                              tooltip: 'Editar Batida',
-                              onPressed:
-                                  _carregando ||
-                                      _dialogAberto ||
-                                      ref
-                                              .read(authProvider)
-                                              .asData
-                                              ?.value
-                                              ?.user
-                                              .role !=
-                                          UserRole.rh
-                                  ? null
-                                  : () => _ajustar(data, espelho, ponto),
-                              icon: const Icon(Icons.edit_outlined),
-                            ),
-                          ),
-                        ],
-                      ),
-                ],
-              ),
-            ],
+              ],
+            ),
           ],
-        ),
-      );
-    },
-  );
+        ],
+      ),
+    );
+  }
 }
 
 class _Total extends StatelessWidget {

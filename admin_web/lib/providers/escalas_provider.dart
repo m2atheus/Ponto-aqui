@@ -7,6 +7,7 @@ import '../repositories/escala_repository.dart';
 import '../repositories/repository_failure.dart';
 import 'api_providers.dart';
 import 'auth_provider.dart';
+import 'silent_refresh.dart';
 import 'dashboard_provider.dart';
 import 'w06_provider.dart';
 import 'alocacoes_provider.dart';
@@ -31,7 +32,12 @@ final escalasProvider = AsyncNotifierProvider<EscalasController, List<Escala>>(
   retry: (count, error) => null,
 );
 
-class EscalasController extends AsyncNotifier<List<Escala>> {
+class EscalasController extends AsyncNotifier<List<Escala>>
+    with SilentRefresh<List<Escala>> {
+  @override
+  Future<List<Escala>> loadForPolling(CancelToken cancelToken) =>
+      ref.read(escalaRepositoryProvider).listar(cancelToken: cancelToken);
+
   @override
   Future<List<Escala>> build() {
     final cancel = CancelToken();

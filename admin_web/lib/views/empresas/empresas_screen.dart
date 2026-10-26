@@ -1,6 +1,9 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../widgets/smart_polling.dart';
 
 import '../widgets/responsive_table_container.dart';
 
@@ -19,7 +22,15 @@ class EmpresasScreen extends ConsumerStatefulWidget {
   ConsumerState<EmpresasScreen> createState() => _EmpresasScreenState();
 }
 
-class _EmpresasScreenState extends ConsumerState<EmpresasScreen> {
+class _EmpresasScreenState extends ConsumerState<EmpresasScreen>
+    with WidgetsBindingObserver, SmartPolling<EmpresasScreen> {
+  @override
+  bool get pollingEnabled => !_desativando;
+
+  @override
+  Future<void> refreshForPolling(CancelToken cancelToken) =>
+      ref.read(empresasProvider.notifier).refreshSilently(cancelToken);
+
   final _scroll = ScrollController();
   bool _desativando = false;
   @override
@@ -134,13 +145,6 @@ class _EmpresasScreenState extends ConsumerState<EmpresasScreen> {
                 onPressed: podeGravar ? _formulario : null,
                 icon: const Icon(Icons.add),
                 label: const Text('Nova Empresa'),
-              ),
-              IconButton(
-                tooltip: 'Atualizar empresas',
-                onPressed: dados.isLoading || _desativando
-                    ? null
-                    : () => ref.invalidate(empresasProvider),
-                icon: const Icon(Icons.refresh),
               ),
             ],
           ),

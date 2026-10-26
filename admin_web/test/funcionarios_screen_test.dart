@@ -114,7 +114,8 @@ void main() {
         findsOneWidget,
       );
       expect(api.alocacoes, hasLength(1));
-      await tester.tap(find.byTooltip('Atualizar funcionários'));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump(const Duration(seconds: 60));
       await tester.pumpAndSettle();
       expect(
         app.container.read(funcionariosProvider).requireValue.single.ativo,

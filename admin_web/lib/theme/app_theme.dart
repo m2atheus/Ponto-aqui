@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
 abstract final class BrandColors {
-  static const navy = Color(0xFF0B3158);
+  static const navy = Color(0xFF092E50);
   static const teal = Color(0xFF008E89);
-  static const mint = Color(0xFFE7F5F3);
-  static const background = Color(0xFFF3F7F9);
+  static const mint = Color(0xFFECF7F5);
+  static const background = Color(0xFFF4F7FA);
   static const ink = Color(0xFF18334B);
   static const muted = Color(0xFF5F7485);
-  static const border = Color(0xFFDCE6EC);
+  static const border = Color(0xFFE2EAEE);
   static const warning = Color(0xFF875614);
   static const warningSurface = Color(0xFFFFF4DF);
 }
@@ -24,7 +24,7 @@ abstract final class AppTheme {
         : BrandColors.background;
     final container = isDark
         ? const Color(0xFF2D2D2D)
-        : const Color(0xFFF8FAFC);
+        : const Color(0xFFF7FAFB);
     final primary = isDark ? const Color(0xFFA8D0F5) : BrandColors.navy;
     final secondary = isDark ? const Color(0xFF77DED4) : BrandColors.teal;
     final onSurface = isDark ? const Color(0xFFE7EDF2) : BrandColors.ink;
@@ -83,7 +83,16 @@ abstract final class AppTheme {
           letterSpacing: -0.6,
         ),
         titleMedium: text.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+        headlineSmall: text.headlineSmall?.copyWith(
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.6,
+        ),
+        titleLarge: text.titleLarge?.copyWith(
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.3,
+        ),
         bodyMedium: text.bodyMedium?.copyWith(height: 1.5),
+        bodySmall: text.bodySmall?.copyWith(color: muted, height: 1.5),
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: surface,
@@ -97,7 +106,9 @@ abstract final class AppTheme {
       cardTheme: CardThemeData(
         color: surface,
         surfaceTintColor: Colors.transparent,
-        elevation: 0,
+        elevation: 1,
+        shadowColor: const Color(0xFF0A304A)
+            .withValues(alpha: isDark ? 0.14 : 0.05),
         margin: EdgeInsets.zero,
         shape: rounded,
         clipBehavior: Clip.antiAlias,
@@ -139,6 +150,35 @@ abstract final class AppTheme {
           ),
         ),
       ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: primary,
+          backgroundColor: surface,
+          minimumSize: const Size(44, 44),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          side: BorderSide(color: border),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+        ),
+      ),
+      tabBarTheme: TabBarThemeData(
+        labelColor: secondary,
+        unselectedLabelColor: muted,
+        dividerColor: border,
+        indicatorColor: secondary,
+        labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+        unselectedLabelStyle: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(foregroundColor: secondary),
       ),
@@ -147,8 +187,8 @@ abstract final class AppTheme {
       ),
       listTileTheme: ListTileThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        selectedTileColor: primary,
-        selectedColor: scheme.onPrimary,
+        selectedTileColor: scheme.secondaryContainer,
+        selectedColor: isDark ? secondary : primary,
         iconColor: muted,
         textColor: onSurface,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
