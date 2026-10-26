@@ -10,6 +10,7 @@ import '../repositories/ponto_admin_repository.dart';
 import 'api_providers.dart';
 import 'dashboard_provider.dart';
 import 'auth_provider.dart';
+import 'silent_refresh.dart';
 
 final pontoAdminRepositoryProvider = Provider<PontoAdminRepository>((ref) {
   final session = ref.watch(authProvider).asData?.value;
@@ -85,7 +86,11 @@ final w06Provider = AsyncNotifierProvider<W06Controller, W06Data>(
   retry: (count, error) => null,
 );
 
-class W06Controller extends AsyncNotifier<W06Data> {
+class W06Controller extends AsyncNotifier<W06Data> with SilentRefresh<W06Data> {
+  @override
+  Future<W06Data> loadForPolling(CancelToken cancelToken) =>
+      ref.read(w06RepositoryProvider).carregar(cancelToken: cancelToken);
+
   @override
   Future<W06Data> build() {
     final cancel = CancelToken();

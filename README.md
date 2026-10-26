@@ -120,6 +120,11 @@ No **terminal 1**, na raiz do projeto:
 Abra **http://localhost:5000/**. Um JSON com informações da API confirma
 que o servidor iniciou. Deixe esse terminal aberto.
 
+`run.py` recarrega automaticamente a API quando o código Python muda, sem
+habilitar o debugger por padrão. Se a API já estava aberta antes dessa mudança,
+encerre com **Ctrl+C** e execute o comando novamente. Para desativar a recarga,
+defina `FLASK_RELOAD=0`. O deploy com Gunicorn não utiliza essa recarga.
+
 ### 6. Iniciar o painel
 
 Abra o **terminal 2** na raiz do projeto:

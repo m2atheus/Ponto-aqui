@@ -1,0 +1,13 @@
+# Allow only the API runtime and migration sources into the build context.
+*
+!Dockerfile
+!requirements.txt
+!app/
+!app/**
+!migrations/
+!migrations/**
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.env
+**/.env.*

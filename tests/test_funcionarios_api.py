@@ -21,7 +21,9 @@ def funcionarios_api(session, pg_app, tenants, monkeypatch):
     )
     session.add(rh)
     session.commit()
-    methods = {name: getattr(FuncionarioService, name) for name in ("listar", "criar", "atualizar")}
+    methods = {name: getattr(FuncionarioService, name) for name in ("listar", "criar", "atualizar", "buscar")}
+    monkeypatch.setattr(FuncionarioService, "buscar", staticmethod(
+        lambda uid, eid, **kwargs: methods["buscar"](uid, eid, session=session, **kwargs)))
     monkeypatch.setattr(FuncionarioService, "listar", staticmethod(
         lambda uid, eid: methods["listar"](uid, eid, session=session)))
     monkeypatch.setattr(FuncionarioService, "criar", staticmethod(
@@ -38,8 +40,74 @@ def cadastro(**changes):
     return {"nome": "  Ana Silva  ", "matricula": " 002 ", "cargo": None, **changes}
 
 
+def test_search_requires_jwt(app):
+    assert app.test_client().get("/api/web/funcionarios/busca?q=ana").status_code == 401
+
+
+@pytest.mark.postgres
+def test_search_is_case_insensitive_limited_and_tenant_scoped(funcionarios_api, session, tenants):
+    client, headers, rh = funcionarios_api
+    session.add_all([
+        Funcionarios(empresa_id=rh.empresa_id, nome=f"Chico {n:02}", matricula=f"CH-{n:03}")
+        for n in range(25)
+    ])
+    session.add(Funcionarios(empresa_id=tenants[1].company.id, nome="Chico Externo", matricula="CH-999"))
+    session.commit()
+    response = client.get("/api/web/funcionarios/busca?q=cHiCo&limit=1000", headers=headers)
+    assert response.status_code == 200
+    rows = response.json["funcionarios"]
+    assert len(rows) == 20
+    assert {row["empresa_id"] for row in rows} == {str(rh.empresa_id)}
+    assert [r["nome"] for r in rows] == [f"Chico {n:02}" for n in range(20)]
+    assert client.get("/api/web/funcionarios/busca?q=ch-024", headers=headers).json["funcionarios"][0]["nome"] == "Chico 24"
+    assert client.get("/api/web/funcionarios/busca?matricula=CH-024", headers=headers).json["funcionarios"][0]["nome"] == "Chico 24"
+
+
+@pytest.mark.postgres
+def test_search_handles_empty_wildcards_history_and_invalid_query(funcionarios_api, session):
+    client, headers, rh = funcionarios_api
+    session.add(Funcionarios(empresa_id=rh.empresa_id, nome="Pessoa Histórica", matricula="ID_10%", ativo=False))
+    session.commit()
+    for q in ("inexistente", "%%", "__"):
+        assert client.get("/api/web/funcionarios/busca", query_string={"q": q}, headers=headers).json == {"funcionarios": []}
+    found = client.get("/api/web/funcionarios/busca", query_string={"q": "_10%"}, headers=headers).json["funcionarios"]
+    assert len(found) == 1 and found[0]["ativo"] is False
+    assert client.get("/api/web/funcionarios/busca?q=P", headers=headers).json["funcionarios"][0]["nome"] == "Pessoa Histórica"
+    for query in ({"q": "x" * 151}, {"q": "ana", "matricula": "001"}):
+        assert client.get("/api/web/funcionarios/busca", query_string=query, headers=headers).status_code == 400
+
+
+@pytest.mark.postgres
+def test_empty_search_returns_only_first_twenty_of_current_tenant(funcionarios_api, session, tenants):
+    client, headers, rh = funcionarios_api
+    session.add_all([
+        Funcionarios(empresa_id=rh.empresa_id, nome=f"Ana {n:02}", matricula=f"INI-{n:03}")
+        for n in range(25)
+    ])
+    session.add(Funcionarios(empresa_id=tenants[1].company.id, nome="AAA outra empresa", matricula="INI-999"))
+    session.commit()
+    for query in ({}, {"q": ""}, {"q": "  "}, {"matricula": ""}, {"q": "", "matricula": ""}):
+        response = client.get("/api/web/funcionarios/busca", query_string=query, headers=headers)
+        assert response.status_code == 200
+        rows = response.json["funcionarios"]
+        assert len(rows) == 20
+        assert [row["nome"] for row in rows] == [f"Ana {n:02}" for n in range(20)]
+        assert {row["empresa_id"] for row in rows} == {str(rh.empresa_id)}
+
+
+@pytest.mark.postgres
+def test_search_revalidates_role_and_tenant_claim(funcionarios_api, session, tenants):
+    client, headers, rh = funcionarios_api
+    forged = create_access_token(identity=str(rh.id), additional_claims={"empresa_id": str(tenants[1].company.id), "role": "RH"})
+    assert client.get("/api/web/funcionarios/busca?q=ana", headers={"Authorization": "Bearer " + forged}).status_code == 401
+    rh.papel = PapelUsuario.GESTOR
+    session.commit()
+    assert client.get("/api/web/funcionarios/busca?q=ana", headers=headers).status_code == 403
+
+
 @pytest.mark.parametrize(("path", "method"), [
     ("/api/web/funcionarios", "GET"),
+    ("/api/web/funcionarios/busca", "GET"),
     ("/api/web/funcionarios", "POST"),
     ("/api/web/funcionarios/" + str(uuid.uuid4()), "PUT"),
 ])

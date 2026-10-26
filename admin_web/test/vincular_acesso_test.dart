@@ -73,7 +73,8 @@ void main() {
       'conta-funcionario-1',
     );
     expect(tester.element(find.byType(AdminScaffold)), same(shell));
-    await tester.tap(find.byTooltip('Atualizar funcionários'));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump(const Duration(seconds: 60));
     await tester.pumpAndSettle();
     expect(tester.widget<IconButton>(find.byKey(acao)).onPressed, isNull);
     // A senha nunca é incorporada ao DTO nem ao estado do funcionário.

@@ -42,7 +42,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         session.user.role,
         Uri.parse(destination).path,
       )) {
-        return '/acesso-negado';
+        // A saved return URL may belong to a previous account or role.
+        // Successful login starts at the dashboard when it cannot be resumed;
+        // explicit navigation to a restricted page still shows access denied.
+        return atLogin ? '/dashboard' : '/acesso-negado';
       }
       if (atLogin || state.uri.path == '/') {
         return atLogin ? destination : '/dashboard';

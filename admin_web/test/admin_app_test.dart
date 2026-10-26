@@ -22,6 +22,7 @@ _mount(
   UserRole? role,
   MemoryTokenStorage? sharedStorage,
   AuthAdapter? sharedAdapter,
+  bool mockEnabled = true,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = size;
@@ -47,7 +48,7 @@ _mount(
       overrides: [
         tokenStorageProvider.overrideWithValue(storage),
         dioProvider.overrideWithValue(dio),
-        mockAuthEnabledProvider.overrideWithValue(true),
+        mockAuthEnabledProvider.overrideWithValue(mockEnabled),
       ],
       child: const AdminApp(),
     ),
@@ -130,7 +131,11 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  for (final size in [const Size(320, 760), const Size(1024, 768)]) {
+  for (final size in [
+    const Size(320, 760),
+    const Size(1024, 518),
+    const Size(1024, 768),
+  ]) {
     testWidgets('login com a marca funciona em ${size.width}px', (
       tester,
     ) async {
@@ -150,6 +155,23 @@ void main() {
       expect(find.text('Total de Funcionários'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+  }
+
+  for (final size in [const Size(390, 844), const Size(1440, 900)]) {
+    testWidgets(
+      'login de produção mantém formulário acessível em ${size.width}px',
+      (tester) async {
+        await _mount(tester, size: size, mockEnabled: false);
+        expect(find.textContaining('Acessos de teste:'), findsNothing);
+        expect(tester.takeException(), isNull);
+        await tester.ensureVisible(find.text('Entrar'));
+        await tester.tap(find.text('Entrar'));
+        await tester.pumpAndSettle();
+        expect(find.text('Informe um e-mail válido.'), findsOneWidget);
+        expect(find.text('Informe a senha.'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 
   for (final role in UserRole.values) {
@@ -511,6 +533,67 @@ void main() {
     await _login(tester);
     expect(app.router.routeInformationProvider.value.uri.path, '/empresas');
   });
+
+  for (final path in ['/empresas', '/empresas/nova']) {
+    testWidgets(
+      'login real do RH abre Dashboard se retorno $path exige outro perfil',
+      (tester) async {
+        final app = await _mount(tester, mockEnabled: false);
+        app.router.go(path);
+        await tester.pumpAndSettle();
+        expect(
+          app.router.routeInformationProvider.value.uri.queryParameters['from'],
+          path,
+        );
+        app.adapter.response = sessionFor(UserRole.rh).toJson();
+        await _login(tester, email: 'rh@empresa.com', password: 'senha-segura');
+        expect(
+          app.router.routeInformationProvider.value.uri.path,
+          '/dashboard',
+        );
+        expect(find.text('Acesso negado'), findsNothing);
+        expect(find.text('Total de Funcionários'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('login real do RH retoma página permitida com filtros', (
+    tester,
+  ) async {
+    final app = await _mount(tester, mockEnabled: false);
+    app.router.go('/funcionarios?busca=Ana');
+    await tester.pumpAndSettle();
+    app.adapter.response = sessionFor(UserRole.rh).toJson();
+    await _login(tester, email: 'rh@empresa.com', password: 'senha-segura');
+    expect(
+      app.router.routeInformationProvider.value.uri.toString(),
+      '/funcionarios?busca=Ana',
+    );
+    expect(find.text('Acesso negado'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'troca de Superadmin para RH não herda página restrita da sessão anterior',
+    (tester) async {
+      final app = await _mount(
+        tester,
+        role: UserRole.superadmin,
+        mockEnabled: false,
+      );
+      app.router.go('/empresas');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Sair'));
+      await tester.pumpAndSettle();
+      app.adapter.response = sessionFor(UserRole.rh).toJson();
+      await _login(tester, email: 'rh@empresa.com', password: 'senha-segura');
+      expect(app.router.routeInformationProvider.value.uri.path, '/dashboard');
+      expect(find.text('Acesso negado'), findsNothing);
+      expect(find.widgetWithText(ListTile, 'Empresas'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('parâmetro de retorno externo não redireciona para outro site', (
     tester,

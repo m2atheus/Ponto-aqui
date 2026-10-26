@@ -8,6 +8,7 @@ import '../repositories/funcionario_repository.dart';
 import '../repositories/repository_failure.dart';
 import 'api_providers.dart';
 import 'auth_provider.dart';
+import 'silent_refresh.dart';
 import 'alocacoes_provider.dart';
 import 'dashboard_provider.dart';
 import 'w06_provider.dart';
@@ -48,7 +49,12 @@ final funcionariosProvider =
       retry: (count, error) => null,
     );
 
-class FuncionariosController extends AsyncNotifier<List<Funcionario>> {
+class FuncionariosController extends AsyncNotifier<List<Funcionario>>
+    with SilentRefresh<List<Funcionario>> {
+  @override
+  Future<List<Funcionario>> loadForPolling(CancelToken cancelToken) =>
+      ref.read(funcionarioRepositoryProvider).listar(cancelToken: cancelToken);
+
   @override
   Future<List<Funcionario>> build() async {
     final session = ref.watch(authProvider).asData?.value;

@@ -4,7 +4,7 @@ import re
 import uuid
 
 from flask import current_app
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app import db
@@ -176,6 +176,37 @@ class FuncionarioService:
                 Funcionarios.empresa_id == empresa,
             ).order_by(Funcionarios.nome, Funcionarios.id)).all()
             return {"funcionarios": [FuncionarioService._json(row) for row in rows]}, 200
+        return FuncionarioService._executar(usuario_id, empresa_id, operacao, session)
+
+    @staticmethod
+    def buscar(usuario_id, empresa_id, q=None, matricula=None, session=None):
+        """Busca limitada para seletores; inclui inativos para relatórios históricos."""
+        def operacao(session, empresa):
+            for valor in (q, matricula):
+                if valor is not None and (not isinstance(valor, str) or len(valor.strip()) > 150):
+                    raise FuncionarioError("A busca deve conter até 150 caracteres.")
+            busca = (q or "").strip()
+            matricula_busca = (matricula or "").strip()
+            if busca and matricula_busca:
+                raise FuncionarioError("Informe q ou matricula, não os dois juntos.")
+
+            consulta = select(Funcionarios).where(Funcionarios.empresa_id == empresa)
+            texto = busca or matricula_busca
+            if texto:
+                # Escapa curingas e usa parâmetros vinculados, sem SQL interpolado.
+                padrao = "%" + texto.replace("/", "//").replace("%", "/%").replace("_", "/_") + "%"
+                filtro = Funcionarios.matricula.ilike(padrao, escape="/")
+                if busca:
+                    filtro = or_(Funcionarios.nome.ilike(padrao, escape="/"), filtro)
+                consulta = consulta.where(filtro)
+
+            # Sem texto, retorna a lista inicial. O tenant e o limite são sempre aplicados.
+            rows = session.scalars(consulta.order_by(
+                Funcionarios.nome, Funcionarios.id,
+            ).limit(20)).all()
+            return {"funcionarios": [FuncionarioService._json(row) for row in rows]}, 200
+
+        # Revalidates the logged-in RH and tenant through the existing auth service.
         return FuncionarioService._executar(usuario_id, empresa_id, operacao, session)
 
     @staticmethod

@@ -98,7 +98,16 @@ Future<void> consultar(
   WidgetTester tester, {
   String pessoa = 'Ana Silva · 001',
 }) async {
-  await escolher(tester, const Key('relatorio-funcionario'), pessoa);
+  final field = find.byKey(const Key('funcionario-busca-input'));
+  await tester.ensureVisible(field);
+  await tester.tap(field);
+  await tester.pumpAndSettle();
+  await tester.enterText(field, pessoa.split(' · ').first);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 500));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(pessoa).last);
+  await tester.pumpAndSettle();
   await escolher(tester, const Key('relatorio-mes'), 'Outubro');
   await tester.enterText(find.byKey(const Key('relatorio-ano')), '2026');
   await tester.ensureVisible(find.byKey(const Key('gerar-espelho')));

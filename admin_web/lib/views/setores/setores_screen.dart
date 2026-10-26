@@ -1,8 +1,12 @@
+import 'package:dio/dio.dart';
+
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../widgets/smart_polling.dart';
 
 import '../widgets/responsive_table_container.dart';
 
@@ -22,7 +26,15 @@ class SetoresScreen extends ConsumerStatefulWidget {
   ConsumerState<SetoresScreen> createState() => _SetoresScreenState();
 }
 
-class _SetoresScreenState extends ConsumerState<SetoresScreen> {
+class _SetoresScreenState extends ConsumerState<SetoresScreen>
+    with WidgetsBindingObserver, SmartPolling<SetoresScreen> {
+  @override
+  bool get pollingEnabled => !_ocupado && _removendo == null;
+
+  @override
+  Future<void> refreshForPolling(CancelToken cancelToken) =>
+      ref.read(setoresProvider.notifier).refreshSilently(cancelToken);
+
   final _scroll = ScrollController();
   bool _ocupado = false;
   String? _removendo;
@@ -160,13 +172,6 @@ class _SetoresScreenState extends ConsumerState<SetoresScreen> {
                 onPressed: enabled ? _formulario : null,
                 icon: const Icon(Icons.add),
                 label: const Text('Novo Setor'),
-              ),
-              IconButton(
-                tooltip: 'Atualizar setores',
-                onPressed: !session.isMock && !dados.isLoading && !_ocupado
-                    ? () => ref.invalidate(setoresProvider)
-                    : null,
-                icon: const Icon(Icons.refresh),
               ),
             ],
           ),

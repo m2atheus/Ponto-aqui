@@ -7,6 +7,7 @@ import '../models/setor.dart';
 import '../repositories/repository_failure.dart';
 import 'alocacoes_provider.dart';
 import 'auth_provider.dart';
+import 'silent_refresh.dart';
 import 'dashboard_provider.dart';
 import 'w06_provider.dart';
 
@@ -33,7 +34,12 @@ AuthSession _sessao(AuthSession? value) {
   return value;
 }
 
-class SetoresController extends AsyncNotifier<List<Setor>> {
+class SetoresController extends AsyncNotifier<List<Setor>>
+    with SilentRefresh<List<Setor>> {
+  @override
+  Future<List<Setor>> loadForPolling(CancelToken cancelToken) =>
+      ref.read(setorRepositoryProvider).listar(cancelToken: cancelToken);
+
   @override
   Future<List<Setor>> build() async {
     final session = ref.watch(authProvider).asData?.value;

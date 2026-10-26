@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/auth_provider.dart';
 import '../widgets/brand_logo.dart';
+import '../widgets/brand_backdrop.dart';
 import '../widgets/theme_toggle_button.dart';
 import 'sidebar.dart';
 
@@ -18,7 +19,7 @@ class AdminScaffold extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) => LayoutBuilder(
     builder: (context, constraints) {
       final desktop = constraints.maxWidth >= 800;
-      final sidebar = Sidebar(currentPath: currentPath);
+      final sidebar = Sidebar(currentPath: currentPath, collapsible: desktop);
       return Scaffold(
         appBar: AppBar(
           toolbarHeight: desktop ? 76 : 64,
@@ -33,9 +34,31 @@ class AdminScaffold extends ConsumerWidget {
                   ),
                 ),
           title: desktop
-              ? const Text(
-                  'Gestão de ponto e jornada',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ? Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.secondaryContainer,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.space_dashboard_outlined,
+                        size: 19,
+                        color: Theme.of(context).colorScheme.secondary,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Flexible(
+                      child: Text(
+                        'Gestão de ponto e jornada',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
                 )
               : BrandLogo(
                   width: (constraints.maxWidth - 160).clamp(80.0, 150.0),
@@ -85,20 +108,11 @@ class AdminScaffold extends ConsumerWidget {
           child: desktop
               ? Row(
                   children: [
-                    if (desktop) ...[
-                      SizedBox(
-                        width: 280,
-                        child: Material(
-                          color: Theme.of(context).colorScheme.surface,
-                          child: sidebar,
-                        ),
-                      ),
-                      const VerticalDivider(width: 1),
-                    ],
-                    Expanded(child: child),
+                    if (desktop) ...[sidebar, const VerticalDivider(width: 1)],
+                    Expanded(child: BrandBackdrop(subtle: true, child: child)),
                   ],
                 )
-              : child,
+              : BrandBackdrop(subtle: true, child: child),
         ),
       );
     },

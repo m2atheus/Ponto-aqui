@@ -32,6 +32,32 @@ void main() {
   });
   tearDown(() => dio.close(force: true));
 
+  test('busca usa endpoint limitado, parâmetros e rejeita respostas de outro tenant', () async {
+    expect((await funcionarios.buscar('')).single.nome, 'Ana Silva');
+    expect(adapter.requests.single.queryParameters, {'q': ''});
+    adapter.requests.clear();
+    expect((await funcionarios.buscar('a')).single.nome, 'Ana Silva');
+    expect(adapter.requests.single.queryParameters, {'q': 'a'});
+    adapter.requests.clear();
+    expect((await funcionarios.buscar('  ANA  ')).single.nome, 'Ana Silva');
+    expect(adapter.requests.single.uri.path, '/api/web/funcionarios/busca');
+    expect(adapter.requests.single.queryParameters, {'q': 'ANA'});
+    adapter.handler = (_) => jsonResponse({
+      'funcionarios': [funcionarioJson(empresaId: 'outra-empresa')],
+    });
+    await expectLater(
+      funcionarios.buscar('ana'),
+      throwsA(isA<RepositoryFailure>()),
+    );
+    adapter.handler = (_) => jsonResponse({
+      'funcionarios': List.generate(21, (_) => funcionarioJson()),
+    });
+    await expectLater(
+      funcionarios.buscar('ana'),
+      throwsA(isA<RepositoryFailure>()),
+    );
+  });
+
   test('reativar envia somente ativo e valida o funcionário confirmado na resposta', () async {
     adapter.funcionarios.single['ativo'] = false;
     final saved = await funcionarios.reativarFuncionario('funcionario-1');

@@ -23,7 +23,10 @@ web_bp.register_blueprint(escala_bp, url_prefix="/escalas")
 @jwt_required()
 def dashboard():
     payload, status = DashboardService.consultar(get_jwt_identity(), get_jwt().get("empresa_id"))
-    return jsonify(payload), status
+    response = jsonify(payload)
+    response.status_code = status
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 @web_bp.get("/alocacoes")
@@ -71,6 +74,16 @@ def listar_funcionarios():
 def criar_funcionario():
     payload, status = FuncionarioService.criar(
         get_jwt_identity(), get_jwt().get("empresa_id"), request.get_json(silent=True),
+    )
+    return jsonify(payload), status
+
+
+@web_bp.get("/funcionarios/busca")
+@jwt_required()
+def buscar_funcionarios():
+    payload, status = FuncionarioService.buscar(
+        get_jwt_identity(), get_jwt().get("empresa_id"),
+        q=request.args.get("q"), matricula=request.args.get("matricula"),
     )
     return jsonify(payload), status
 
