@@ -12,11 +12,21 @@
 
   <!-- Badges de build e licença são placeholders; não representam CI ou licença já publicados. -->
   <p>
-    <img src="https://img.shields.io/badge/build-n%C3%A3o%20configurado-lightgrey" alt="Build: placeholder">
-    <img src="https://img.shields.io/badge/license-MIT%20(proposta)-lightgrey" alt="Licença MIT: proposta pendente de formalização">
-    <img src="https://img.shields.io/badge/Flutter-Web%20%26%20Mobile-02569B?logo=flutter&amp;logoColor=white" alt="Flutter Web e Mobile">
-    <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&amp;logoColor=white" alt="Python 3.11 ou superior">
-    <img src="https://img.shields.io/badge/PostgreSQL-Supabase-4169E1?logo=postgresql&amp;logoColor=white" alt="PostgreSQL no Supabase">
+    <a href="#validacao" title="Como validar o projeto; CI ainda não configurada">
+      <img src="https://img.shields.io/badge/build-n%C3%A3o%20configurado-lightgrey" alt="Build: não configurado — consultar validação">
+    </a>
+    <a href="#license" title="Situação da licença do projeto">
+      <img src="https://img.shields.io/badge/license-MIT%20(proposta)-lightgrey" alt="Licença MIT: proposta pendente de formalização">
+    </a>
+    <a href="https://docs.flutter.dev/" title="Documentação oficial do Flutter">
+      <img src="https://img.shields.io/badge/Flutter-Web%20%26%20Mobile-02569B?logo=flutter&amp;logoColor=white" alt="Flutter Web e Mobile">
+    </a>
+    <a href="https://docs.python.org/3/" title="Documentação oficial do Python">
+      <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&amp;logoColor=white" alt="Python 3.11 ou superior">
+    </a>
+    <a href="https://supabase.com/docs/guides/database" title="Documentação do PostgreSQL no Supabase">
+      <img src="https://img.shields.io/badge/PostgreSQL-Supabase-4169E1?logo=postgresql&amp;logoColor=white" alt="PostgreSQL no Supabase">
+    </a>
   </p>
 
   <p>
@@ -204,6 +214,8 @@ Esse exemplo usa um emulador Android com a API executando no mesmo computador. `
 O mobile usa a **raiz da API**, sem o sufixo `/api/web/`. Não configure credenciais PostgreSQL ou chaves administrativas do Supabase no aplicativo.
 
 **Primeiro acesso:** o RH cria o funcionário, gera sua conta, autoriza o `device_uuid` e configura seus vínculos de setor/escala. O aplicativo realiza login e uma carga inicial válida com internet antes de depender do cache offline. Não há autocadastro no app.
+
+<a id="validacao"></a>
 
 ### Validação e documentação
 
