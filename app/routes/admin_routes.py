@@ -8,9 +8,22 @@ from flask_jwt_extended import get_jwt, get_jwt_identity, jwt_required
 from app.services.ajuste_ponto_service import AjustePontoService
 from app.services.selfie_service import SelfieService
 from app.services.device_service import DeviceService
+from app.services.funcionario_service import FuncionarioService
 
 
 admin_bp = Blueprint("admin", __name__)
+
+
+@admin_bp.put("/funcionarios/<uuid:funcionario_id>/resetar-senha")
+@jwt_required()
+def resetar_senha_funcionario(funcionario_id):
+    payload, status = FuncionarioService.resetar_senha(
+        get_jwt_identity(), get_jwt().get("empresa_id"), funcionario_id,
+        request.get_json(silent=True))
+    response = jsonify(payload)
+    response.status_code = status
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @admin_bp.get("/funcionarios/<uuid:funcionario_id>/dispositivos")

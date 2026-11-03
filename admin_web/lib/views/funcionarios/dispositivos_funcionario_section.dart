@@ -12,6 +12,7 @@ import '../../repositories/dispositivo_repository.dart';
 import '../../repositories/repository_failure.dart';
 import '../widgets/w06_widgets.dart';
 import 'aparelho_card.dart';
+import 'redefinir_senha_dialog.dart';
 
 class DispositivosFuncionarioDialog extends StatelessWidget {
   const DispositivosFuncionarioDialog({super.key, required this.funcionario});
@@ -208,6 +209,42 @@ class _DispositivosFuncionarioSectionState
     }
   }
 
+  Future<void> _redefinirSenha() async {
+    final sessao = ref.read(authProvider).asData?.value;
+    if (_operando ||
+        !_sessaoValida ||
+        sessao?.user.role != UserRole.rh ||
+        sessao?.user.companyId != widget.funcionario.empresaId ||
+        !(_dados?.temAcessoApp ?? widget.funcionario.temAcessoApp)) {
+      return;
+    }
+    setState(() => _operando = true);
+    try {
+      final salvo = await showDialog<bool>(
+        context: context,
+        useRootNavigator: false,
+        barrierDismissible: false,
+        builder: (_) => RedefinirSenhaDialog(
+          funcionario: widget.funcionario,
+          sessionToken: _token!,
+        ),
+      );
+      if (mounted && salvo == true && _sessaoValida) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: Color(0xFF237A48),
+            content: Text(
+              'Senha redefinida com sucesso para este funcionário.',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _operando = false);
+    }
+  }
+
   Future<void> _revogar(DispositivoFuncionario aparelho) async {
     if (_operando || _carregando || !_sessaoValida) return;
     setState(() => _operando = true);
@@ -387,6 +424,43 @@ class _DispositivosFuncionarioSectionState
                     : () => _revogar(aparelho),
               ),
             ),
+        ],
+        if (rh) ...[
+          const SizedBox(height: 20),
+          Card(
+            margin: EdgeInsets.zero,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Credenciais de acesso',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Redefina a senha quando o funcionário precisar recuperar o acesso ao aplicativo.',
+                  ),
+                  const SizedBox(height: 16),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FilledButton.tonalIcon(
+                      key: const Key('redefinir-senha-funcionario'),
+                      onPressed:
+                          _operando ||
+                              !(_dados?.temAcessoApp ??
+                                  widget.funcionario.temAcessoApp)
+                          ? null
+                          : _redefinirSenha,
+                      icon: const Icon(Icons.lock_reset),
+                      label: const Text('Redefinir Senha'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ],
     );
