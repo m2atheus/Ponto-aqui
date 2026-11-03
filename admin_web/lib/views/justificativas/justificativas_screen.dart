@@ -10,8 +10,10 @@ import '../../models/auth_session.dart';
 import '../../models/w06.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/w06_provider.dart';
+import '../../providers/funcionarios_provider.dart';
 import '../../utils/civil_date.dart';
 import '../widgets/w06_widgets.dart';
+import '../widgets/funcionario_autocomplete.dart';
 
 class JustificativasScreen extends ConsumerStatefulWidget {
   const JustificativasScreen({super.key});
@@ -286,7 +288,7 @@ class _JustificativasScreenState extends ConsumerState<JustificativasScreen>
             alignment: Alignment.centerRight,
             child: FilledButton.icon(
               key: const Key('novo-afastamento'),
-              onPressed: _dialogAberto || !data.funcionarios.any((f) => f.ativo)
+              onPressed: _dialogAberto
                   ? null
                   : () => _cadastrar(data, feriado: false),
               icon: const Icon(Icons.add),
@@ -538,30 +540,17 @@ class _CadastroDialogState extends ConsumerState<_CadastroDialog> {
                         : (v) => setState(() => _setorId = v!),
                   ),
                 ] else ...[
-                  DropdownButtonFormField<String>(
+                  FuncionarioAutocomplete(
                     key: const Key('afastamento-funcionario'),
-                    initialValue: _funcionarioId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Funcionário'),
-                    items: [
-                      for (final f in widget.data.funcionarios.where(
-                        (f) =>
-                            f.ativo ||
-                            f.id == widget.itemAfastamento?.funcionarioId,
-                      ))
-                        DropdownMenuItem(
-                          value: f.id,
-                          child: Text(
-                            '${f.nome} · ${f.matricula}',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                    ],
-                    onChanged: _ocupado || widget.itemAfastamento != null
-                        ? null
-                        : (v) => setState(() => _funcionarioId = v),
-                    validator: (v) =>
-                        v == null ? 'Selecione um funcionário.' : null,
+                    repository: ref.watch(funcionarioBuscaRepositoryProvider),
+                    initialValue: widget.data.funcionarios
+                        .where(
+                          (f) => f.id == widget.itemAfastamento?.funcionarioId,
+                        )
+                        .firstOrNull,
+                    ativo: widget.itemAfastamento == null ? true : null,
+                    enabled: !_ocupado && widget.itemAfastamento == null,
+                    onChanged: (f) => setState(() => _funcionarioId = f?.id),
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<TipoAfastamento>(

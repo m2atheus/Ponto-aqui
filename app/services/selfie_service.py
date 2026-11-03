@@ -14,11 +14,29 @@ from app import db
 from app.models import RegistrosPonto, SelfiesPonto
 from .ponto_payload import PontoError, parse_uuid
 from .registro_ponto_service import contexto_funcionario, dispositivo_autorizado
+from .rh_access import GestaoError, executar_empresa
+from .w06_validation import identificador
 
 
 class SelfieService:
     MAX_BYTES = 2 * 1024 * 1024
     MAX_PIXELS = 16_000_000
+
+    @staticmethod
+    def baixar_admin(usuario_id, empresa_id, registro_id, session=None):
+        def operacao(session, empresa):
+            alvo = identificador(registro_id, "registro_id")
+            foto = session.execute(select(SelfiesPonto.conteudo, SelfiesPonto.content_type).join(
+                RegistrosPonto,
+                (SelfiesPonto.empresa_id == RegistrosPonto.empresa_id)
+                & (SelfiesPonto.usuario_id == RegistrosPonto.usuario_id)
+                & (SelfiesPonto.evento_cliente_id == RegistrosPonto.evento_cliente_id),
+            ).where(RegistrosPonto.id == alvo, RegistrosPonto.empresa_id == empresa,
+                SelfiesPonto.empresa_id == empresa)).first()
+            if foto is None:
+                raise GestaoError("Foto não encontrada nesta empresa.", 404, "SELFIE_NAO_ENCONTRADA")
+            return {"conteudo": foto.conteudo, "content_type": foto.content_type}, 200
+        return executar_empresa(usuario_id, empresa_id, operacao, session)
 
     @staticmethod
     def enviar(empresa_id, usuario_id, dispositivo_token, evento_id, arquivo, session=None):
@@ -31,7 +49,7 @@ class SelfieService:
                 RegistrosPonto.evento_cliente_id == evento_id))
             if point is None:
                 raise PontoError("MARCACAO_NAO_ENCONTRADA", "Envie a marcação antes da selfie.", 404)
-            if not dispositivo_autorizado(session, empresa_id, usuario_id, point.dispositivo_cliente_id, dispositivo_token):
+            if not dispositivo_autorizado(session, empresa_id, usuario_id, point.dispositivo_cliente_id, dispositivo_token, point.setor_id):
                 raise PontoError("APARELHO_NAO_AUTORIZADO", "Aparelho não autorizado para esta marcação.", 403)
             if arquivo is None:
                 raise PontoError("SELFIE_AUSENTE", "Envie o campo multipart selfie.")

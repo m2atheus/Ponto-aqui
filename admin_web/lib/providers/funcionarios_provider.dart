@@ -35,6 +35,26 @@ final funcionarioRepositoryProvider = Provider<FuncionarioRepository>((ref) {
   );
 });
 
+// Consulta limitada do seletor do espelho; mutações continuam protegidas no servidor.
+final funcionarioBuscaRepositoryProvider = Provider<FuncionarioRepository>((
+  ref,
+) {
+  final session = ref.watch(authProvider).asData?.value;
+  if (session == null ||
+      session.isMock ||
+      session.user.companyId == null ||
+      !{UserRole.rh, UserRole.gestor}.contains(session.user.role) ||
+      !session.expiresAt.isAfter(DateTime.now())) {
+    throw const RepositoryFailure(
+      'Entre com uma conta de RH ou Gestor da empresa.',
+    );
+  }
+  return FuncionarioRepository(
+    ref.watch(dioProvider),
+    empresaId: session.user.companyId!,
+  );
+});
+
 final alocacaoRepositoryProvider = Provider<AlocacaoRepository>((ref) {
   final session = _requireRh(ref.watch(authProvider).asData?.value);
   return AlocacaoRepository(

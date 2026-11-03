@@ -21,11 +21,12 @@ class AccessPolicy {
       '/escalas',
       '/funcionarios',
       '/alocacoes',
-      '/relatorios',
     }.contains(path)) {
       return role.canManageCompany;
     }
-    if (path == '/equipe' || path == '/justificativas') {
+    if (path == '/equipe' ||
+        path == '/justificativas' ||
+        path == '/relatorios') {
       return role == UserRole.rh || role == UserRole.gestor;
     }
     return true;

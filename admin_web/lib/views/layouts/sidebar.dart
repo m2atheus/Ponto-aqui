@@ -203,14 +203,14 @@ class _SidebarState extends ConsumerState<Sidebar> {
                             Icons.assignment_ind_outlined,
                             showLabels,
                           ),
+                        ],
+                        if (role == UserRole.rh || role == UserRole.gestor) ...[
                           _item(
                             'Relatórios',
                             '/relatorios',
                             Icons.assessment_outlined,
                             showLabels,
                           ),
-                        ],
-                        if (role == UserRole.rh || role == UserRole.gestor) ...[
                           _item(
                             'Equipe',
                             '/equipe',

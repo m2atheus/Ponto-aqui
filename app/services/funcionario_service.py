@@ -87,7 +87,7 @@ class FuncionarioService:
         return FuncionarioService._executar(usuario_id, empresa_id, operacao, session)
 
     @staticmethod
-    def _executar(usuario_id, empresa_id, operacao, session):
+    def _executar(usuario_id, empresa_id, operacao, session, *, papeis=("RH",)):
         session = session if session is not None else db.session
         try:
             payload, status = AuthService.me(
@@ -96,7 +96,7 @@ class FuncionarioService:
             if status != 200:
                 return payload, status
             perfil = payload["usuario"]
-            if perfil["papel"] != "RH" or perfil["empresa_id"] is None:
+            if perfil["papel"] not in papeis or perfil["empresa_id"] is None:
                 raise FuncionarioError(
                     "Cadastro de funcionários exclusivo do RH da empresa.",
                     403, "ACESSO_NEGADO",
@@ -179,7 +179,7 @@ class FuncionarioService:
         return FuncionarioService._executar(usuario_id, empresa_id, operacao, session)
 
     @staticmethod
-    def buscar(usuario_id, empresa_id, q=None, matricula=None, session=None):
+    def buscar(usuario_id, empresa_id, q=None, matricula=None, session=None, *, ativo=None):
         """Busca limitada para seletores; inclui inativos para relatórios históricos."""
         def operacao(session, empresa):
             for valor in (q, matricula):
@@ -191,23 +191,34 @@ class FuncionarioService:
                 raise FuncionarioError("Informe q ou matricula, não os dois juntos.")
 
             consulta = select(Funcionarios).where(Funcionarios.empresa_id == empresa)
+            if ativo not in (None, "true", "false"):
+                raise FuncionarioError("ativo deve ser true ou false.")
+            if ativo is not None:
+                consulta = consulta.where(Funcionarios.ativo.is_(ativo == "true"))
             texto = busca or matricula_busca
+            ordem = []
             if texto:
                 # Escapa curingas e usa parâmetros vinculados, sem SQL interpolado.
-                padrao = "%" + texto.replace("/", "//").replace("%", "/%").replace("_", "/_") + "%"
+                termo = texto.replace("/", "//").replace("%", "/%").replace("_", "/_")
+                padrao = "%" + termo + "%"
+                prefixo = termo + "%"
                 filtro = Funcionarios.matricula.ilike(padrao, escape="/")
+                prioridade = Funcionarios.matricula.ilike(prefixo, escape="/")
                 if busca:
                     filtro = or_(Funcionarios.nome.ilike(padrao, escape="/"), filtro)
+                    prioridade = or_(Funcionarios.nome.ilike(prefixo, escape="/"), prioridade)
                 consulta = consulta.where(filtro)
+                ordem.append(prioridade.desc())
 
             # Sem texto, retorna a lista inicial. O tenant e o limite são sempre aplicados.
             rows = session.scalars(consulta.order_by(
-                Funcionarios.nome, Funcionarios.id,
+                *ordem, Funcionarios.nome.asc(), Funcionarios.id.asc(),
             ).limit(20)).all()
             return {"funcionarios": [FuncionarioService._json(row) for row in rows]}, 200
 
-        # Revalidates the logged-in RH and tenant through the existing auth service.
-        return FuncionarioService._executar(usuario_id, empresa_id, operacao, session)
+        # Busca limitada também atende ao espelho consultado pelo Gestor.
+        return FuncionarioService._executar(usuario_id, empresa_id, operacao, session,
+            papeis=("RH", "GESTOR"))
 
     @staticmethod
     def criar(usuario_id, empresa_id, dados, session=None):

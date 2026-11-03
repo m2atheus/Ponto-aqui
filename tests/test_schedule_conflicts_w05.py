@@ -151,10 +151,46 @@ def test_foreign_tenant_user_and_schedule_hidden(session, tenants):
 
 
 @pytest.mark.postgres
-@pytest.mark.parametrize("start,end", [("2026-10-05", None), ("2026-10-06", "2026-10-05"),
+@pytest.mark.parametrize("start,end", [("2026-10-06", "2026-10-05"),
                                       ("2026-02-30", "2026-10-05"), ("2020-01-01", "2050-01-01")])
 def test_bad_periods_rejected(session, tenants, start, end):
     assert check(session, tenants[0], tenants[0].schedule, start, end)[1] == 400
+
+
+def test_open_period_uses_explicit_ten_year_horizon_and_touching_shifts(session, tenants):
+    t = tenants[0]
+    existing(session, t, start=8, end=19)
+    nova = schedule(session, t, start=19, end=23)
+    result, status = check(session, t, nova, end=None)
+    assert status == 200 and result["periodo_indeterminado"] is True
+    assert result["validacao_ate"] == "2036-10-05"
+    assert result["horizonte_validacao_anos"] == 10
+    nova = schedule(session, t, name="Conflitante sem fim", start=18, end=23)
+    assert check(session, t, nova, end=None)[1] == 409
+
+
+def test_open_period_detects_conflict_years_after_start(session, tenants):
+    t = tenants[0]
+    existing(session, t)
+    t.assignment.data_inicio = date(2035, 10, 1)
+    nova = schedule(session, t)
+    assert check(session, t, nova, end=None)[1] == 409
+
+
+def test_horizon_handles_leap_day_without_changing_business_period():
+    assert Service.fim_horizonte_indeterminado(date(2028, 2, 29)) == date(2038, 2, 28)
+
+
+@pytest.mark.postgres
+def test_validation_by_employee_rejects_foreign_or_inactive_employee(session, tenants):
+    t, other = tenants
+    nova = schedule(session, t)
+    assert Service.validar_alocacao_funcionario(t.company.id, other.employee.id, nova.id,
+        "2026-10-05", None, session=session)[1] == 404
+    t.employee.ativo = False
+    session.flush()
+    assert Service.validar_alocacao_funcionario(t.company.id, t.employee.id, nova.id,
+        "2026-10-05", None, session=session)[1] == 404
 
 
 @pytest.mark.postgres

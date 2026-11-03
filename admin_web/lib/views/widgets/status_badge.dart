@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
 
 class StatusBadge extends StatelessWidget {
-  const StatusBadge({super.key, required this.ativo});
+  const StatusBadge({
+    super.key,
+    required this.ativo,
+    this.activeLabel = 'Ativa',
+    this.inactiveLabel = 'Inativa',
+  });
   final bool ativo;
+  final String activeLabel;
+  final String inactiveLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +41,7 @@ class StatusBadge extends StatelessWidget {
           ),
           const SizedBox(width: 7),
           Text(
-            ativo ? 'Ativa' : 'Inativa',
+            ativo ? activeLabel : inactiveLabel,
             style: TextStyle(
               color: color,
               fontWeight: FontWeight.w600,

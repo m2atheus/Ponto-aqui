@@ -47,6 +47,22 @@ def criar_alocacao():
     return jsonify(payload), status
 
 
+@web_bp.get("/alocacoes/opcoes-mudanca")
+@jwt_required()
+def opcoes_mudanca_alocacao():
+    payload, status = AlocacaoService.opcoes_mudanca(get_jwt_identity(), get_jwt().get("empresa_id"),
+        request.args.get("tipo"), request.args.get("q"))
+    return jsonify(payload), status
+
+
+@web_bp.post("/funcionarios/<uuid:funcionario_id>/mudar-alocacao")
+@jwt_required()
+def mudar_alocacao(funcionario_id):
+    payload, status = AlocacaoService.solicitar_mudanca(get_jwt_identity(), get_jwt().get("empresa_id"),
+        funcionario_id, request.get_json(silent=True))
+    return jsonify(payload), status
+
+
 @web_bp.route("/alocacoes/<uuid:alocacao_id>", methods=["PUT", "PATCH"])
 @jwt_required()
 def encerrar_alocacao(alocacao_id):
@@ -84,6 +100,7 @@ def buscar_funcionarios():
     payload, status = FuncionarioService.buscar(
         get_jwt_identity(), get_jwt().get("empresa_id"),
         q=request.args.get("q"), matricula=request.args.get("matricula"),
+        ativo=request.args.get("ativo"),
     )
     return jsonify(payload), status
 

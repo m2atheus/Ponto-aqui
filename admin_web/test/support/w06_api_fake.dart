@@ -82,6 +82,16 @@ class W06ApiFake extends ManagementApiFake {
       return jsonResponse({'usuario': sessionFor(role).user.toJson()});
     }
     final path = options.uri.path;
+    if (options.method == 'GET' &&
+        path.contains('/api/v1/admin/funcionarios/') &&
+        path.endsWith('/dispositivos')) {
+      requests.add(options);
+      return jsonResponse({
+        'dispositivos': [],
+        'setores_disponiveis': [],
+        'tem_acesso_app': false,
+      });
+    }
     if (!(path.contains('/feriados') ||
         path.contains('/afastamentos') ||
         path.endsWith('/equipe') ||

@@ -7,20 +7,36 @@ import '../models/w06.dart';
 import '../repositories/repository_failure.dart';
 import '../repositories/w06_repository.dart';
 import '../repositories/ponto_admin_repository.dart';
+import '../repositories/dispositivo_repository.dart';
 import 'api_providers.dart';
 import 'dashboard_provider.dart';
 import 'auth_provider.dart';
 import 'silent_refresh.dart';
 
+final dispositivoRepositoryProvider = Provider<DispositivoRepository>((ref) {
+  final session = ref.watch(authProvider).asData?.value;
+  if (session == null ||
+      session.isMock ||
+      session.user.companyId == null ||
+      !{UserRole.rh, UserRole.gestor}.contains(session.user.role) ||
+      !session.expiresAt.isAfter(DateTime.now())) {
+    throw const RepositoryFailure('Entre com uma conta real de RH ou Gestor.');
+  }
+  return DispositivoRepository(
+    ref.watch(dioProvider),
+    empresaId: session.user.companyId!,
+  );
+});
+
 final pontoAdminRepositoryProvider = Provider<PontoAdminRepository>((ref) {
   final session = ref.watch(authProvider).asData?.value;
   if (session == null ||
       session.isMock ||
-      session.user.role != UserRole.rh ||
+      !{UserRole.rh, UserRole.gestor}.contains(session.user.role) ||
       session.user.companyId == null ||
       !session.expiresAt.isAfter(DateTime.now())) {
     throw const RepositoryFailure(
-      'Somente o RH da empresa pode ajustar batidas.',
+      'Somente RH e Gestor da empresa podem administrar batidas.',
       statusCode: 403,
     );
   }

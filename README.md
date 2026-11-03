@@ -1,133 +1,177 @@
-# Ponto Aqui
+<div align="center">
 
-Sistema de controle de ponto e jornada com API Flask, banco PostgreSQL no
-Supabase e painel administrativo Flutter Web.
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="admin_web/assets/brand/ponto_aqui_logo_dark.png">
+    <img src="admin_web/assets/brand/ponto_aqui_logo_transparent.png" alt="Logo Ponto Aqui" width="360">
+  </picture>
 
-Este guia acompanha a primeira instalação e mostra como iniciar o projeto
-nas próximas vezes. Os comandos usam **Windows e PowerShell**.
+  <h1>Ponto Aqui</h1>
 
-[Primeira execução](#primeira-execução) · [Uso diário](#uso-diário) ·
-[Demonstração](#demonstração-opcional) · [Problemas comuns](#problemas-comuns)
+  <p><strong>Sua equipe. Seu tempo. Tudo no lugar.</strong></p>
+  <p>Controle de ponto e jornada com operação offline, histórico preservado e gestão de múltiplas empresas.</p>
 
-## Antes de começar
+  <!-- Badges de build e licença são placeholders; não representam CI ou licença já publicados. -->
+  <p>
+    <img src="https://img.shields.io/badge/build-n%C3%A3o%20configurado-lightgrey" alt="Build: placeholder">
+    <img src="https://img.shields.io/badge/license-MIT%20(proposta)-lightgrey" alt="Licença MIT: proposta pendente de formalização">
+    <img src="https://img.shields.io/badge/Flutter-Web%20%26%20Mobile-02569B?logo=flutter&amp;logoColor=white" alt="Flutter Web e Mobile">
+    <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&amp;logoColor=white" alt="Python 3.11 ou superior">
+    <img src="https://img.shields.io/badge/PostgreSQL-Supabase-4169E1?logo=postgresql&amp;logoColor=white" alt="PostgreSQL no Supabase">
+  </p>
 
-| Requisito | Para que serve |
-| --- | --- |
-| Python 3.11 ou superior | Executar a API Flask. |
-| Flutter com Dart 3.13 ou superior, disponível no PATH | Executar o painel Web. |
-| Google Chrome | Abrir o painel em desenvolvimento. |
-| Projeto Supabase e senha do banco | Armazenar os dados no PostgreSQL. |
+  <p>
+    <a href="#installation">Começar agora</a> ·
+    <a href="#features">Regras de negócio</a> ·
+    <a href="docs/PROMPT-MOBILE.md">Integração mobile</a>
+  </p>
 
-Abra a pasta do projeto no VS Code. No terminal, confira as instalações:
+</div>
+
+## The problem
+
+Uma jornada de trabalho não deveria se perder por falta de sinal. Ainda assim, equipes em campo enfrentam conexões instáveis, registros dispersos e processos manuais de fechamento.
+
+Para o RH, conferir horários, investigar uma marcação suspeita e reconstruir mudanças de escala torna-se difícil quando o histórico pode ser sobrescrito. Em operações com várias empresas, também é essencial impedir que dados de uma organização apareçam para outra.
+
+O Ponto Aqui enfrenta esses desafios: continuidade da operação offline, evidências de localização e foto, decisões auditáveis e isolamento dos dados de cada empresa.
+
+## This solution
+
+O sistema conecta três frentes por uma API central. Web e mobile consomem a API; o acesso ao PostgreSQL e as decisões de negócio ficam no backend.
+
+| Frente | Responsabilidade | Tecnologias |
+| --- | --- | --- |
+| **Backend** | Autenticar, isolar empresas, validar políticas e jornadas, persistir marcações e preservar o histórico. | Flask, SQLAlchemy, Flask-Migrate, JWT e PostgreSQL no Supabase. |
+| **Mobile** | Registrar ponto, capturar localização e selfie, manter a fila offline e sincronizar com idempotência. Suporta aparelho pessoal e modo relógio compartilhado. | Flutter, armazenamento local e integração HTTP com a API. |
+| **Web Admin** | Administrar empresas, funcionários, setores e escalas; realizar transferências; acompanhar a equipe e analisar o espelho de ponto. | Flutter Web, Riverpod, Dio, go_router e flutter_map. |
+
+**Organização dos repositórios:** esta base contém a API Flask e o painel em `admin_web/`. O aplicativo mobile é desenvolvido em um repositório separado; seus contratos de integração estão em [docs/PROMPT-MOBILE.md](docs/PROMPT-MOBILE.md).
+
+No backend, `create_app()` inicializa a aplicação, Blueprints separam os canais e a **Service Layer** concentra consultas, validações e regras de negócio. As rotas recebem a requisição e devolvem JSON com o status HTTP.
+
+```text
+app/          API: modelos, serviços, rotas e middleware
+admin_web/    Painel administrativo Flutter Web
+migrations/   Evolução versionada do banco
+tests/        Testes do backend
+docs/         Contratos e guias técnicos
+run.py        Entrada da API em desenvolvimento
+```
+
+## Table of Contents
+
+- [The problem — O problema](#the-problem)
+- [This solution — A solução](#this-solution)
+- [Installation — Instalação](#installation)
+  - [Pré-requisitos](#pré-requisitos)
+  - [Backend](#backend)
+  - [Web Admin](#web-admin)
+  - [Mobile](#mobile)
+  - [Validação e documentação](#validação-e-documentação)
+- [Features — Regras de negócio](#features)
+- [Contributors & License](#contributors-license)
+
+## Installation
+
+### Pré-requisitos
+
+- Python **3.11 ou superior**.
+- Flutter com Dart **3.13 ou superior**, conforme `admin_web/pubspec.yaml`.
+- Chrome para executar o painel Web.
+- Projeto Supabase com acesso à conexão PostgreSQL e à senha do banco.
+- Para o mobile: projeto do aplicativo e dispositivo ou emulador configurado.
+
+Na pasta raiz deste repositório, confira as ferramentas:
 
 ```powershell
 python --version
 flutter doctor
 ```
 
-> **Pasta de trabalho:** os comandos do backend devem ser executados na raiz
-> do projeto, onde estão `run.py` e `requirements.txt`. Os comandos do Flutter
-> devem ser executados em `admin_web`.
+Os comandos principais abaixo usam **Windows/PowerShell**, sem exigir a ativação da `.venv`. Há uma alternativa Linux/macOS ao final da configuração do backend.
 
-## Primeira execução
+### Backend
 
-### 1. Instalar as dependências da API
-
-Na raiz do projeto:
+**1. Instale as dependências e prepare o ambiente local.**
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-A `.venv` mantém as dependências Python deste projeto separadas das demais.
-Usaremos seu executável diretamente, sem precisar ativar o ambiente.
-
-### 2. Configurar a conexão e a autenticação
-
-Crie o arquivo de configuração local:
-
-```powershell
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-No Supabase, abra **Connect → Session pooler**. Copie host, porta, banco e
-usuário para o `.env`. Use a senha do banco criada no Supabase:
+**2. Configure o PostgreSQL e o JWT no `.env`.**
+
+No Supabase, abra **Connect → Session pooler** e preencha os dados da conexão:
 
 ```dotenv
 DATABASE_URL=
-DATABASE_HOST=HOST_DO_POOLER
+DATABASE_HOST=SEU_HOST_DO_POOLER
 DATABASE_PORT=5432
 DATABASE_NAME=postgres
 DATABASE_USER=postgres.SEU_PROJECT_REF
 DATABASE_PASSWORD='SUA_SENHA_DO_BANCO'
-JWT_SECRET_KEY=SEU_SEGREDO_JWT
+
+JWT_SECRET_KEY=COLE_AQUI_UM_SEGREDO_GERADO
 CORS_ORIGINS=http://localhost:3000
+
+# Opcionais: habilitam o SDK HTTP do Supabase.
+SUPABASE_URL=
+SUPABASE_KEY=
 ```
 
-Substitua os exemplos pelos seus dados. A senha recebe seu valor original
-entre aspas; mantenha `DATABASE_URL` vazia para usar os campos separados.
-Uma URL PostgreSQL válida já preenchida em `DATABASE_URL` tem prioridade.
-
-Se `JWT_SECRET_KEY` estiver vazia, gere um segredo e copie o resultado para ela:
+Gere o segredo JWT e copie o resultado para `JWT_SECRET_KEY`:
 
 ```powershell
 .\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-O segredo assina os tokens de login. Guarde-o no `.env` e mantenha o mesmo
-valor nas próximas execuções. O arquivo `.env` não é versionado.
+Mantenha `DATABASE_URL` vazia para usar os campos separados. Se preferir uma URL PostgreSQL completa, ela tem precedência; caracteres especiais da senha precisam ser codificados nessa URL. Nos campos separados, use a senha original.
 
-> **Conexão PostgreSQL e SDK:** `SUPABASE_URL` e `SUPABASE_KEY` são opcionais
-> para o SDK HTTP. A URL `https://SEU_PROJECT_REF.supabase.co` pertence ao SDK;
-> os modelos e migrations usam a conexão PostgreSQL configurada acima.
+`SUPABASE_URL=https://SEU_PROJECT_REF.supabase.co` e a chave publicável pertencem ao SDK HTTP: **não substituem a conexão PostgreSQL** usada pelo SQLAlchemy e pelas migrations. O `.env` e a pasta `instance/` permanecem fora do versionamento.
 
-### 3. Criar ou atualizar as tabelas
-
-Salve o `.env` e execute:
+**3. Aplique as migrations e crie o primeiro Superadmin.**
 
 ```powershell
 .\.venv\Scripts\python.exe -m flask --app app:create_app db upgrade heads
+.\.venv\Scripts\python.exe -m flask --app app:create_app criar-superadmin --email admin@suaempresa.com --gerar-senha
 ```
 
-As migrations aplicam a estrutura do sistema no banco configurado no `.env`.
-O argumento `heads` contempla todas as ramificações existentes neste
-repositório. A configuração inicial das migrations já está pronta.
+O primeiro comando prepara o banco configurado no `.env`. O segundo informa o caminho de `instance/primeiro-acesso-superadmin-*.txt`, onde estarão as credenciais geradas. Se a conta já existir, use suas credenciais atuais; o comando não redefine a senha.
 
-### 4. Criar o primeiro Superadmin
-
-Se você já possui uma conta real, avance para o próximo passo. Caso contrário:
-
-```powershell
-.\.venv\Scripts\python.exe -m flask --app app:create_app criar-superadmin --email admin@teste.com --gerar-senha
-```
-
-O comando cria a conta e informa o caminho de um arquivo como
-`instance/primeiro-acesso-superadmin-*.txt`. Abra o arquivo indicado para
-consultar o e-mail e a senha gerada. A pasta `instance` não é versionada.
-
-Use essa senha para entrar no painel. A senha `admin` é exclusiva da
-demonstração. Uma conta existente mantém suas credenciais.
-
-### 5. Iniciar a API
-
-No **terminal 1**, na raiz do projeto:
+**4. Inicie a API e mantenha o terminal aberto.**
 
 ```powershell
 .\.venv\Scripts\python.exe run.py
 ```
 
-Abra **http://localhost:5000/**. Um JSON com informações da API confirma
-que o servidor iniciou. Deixe esse terminal aberto.
+A API estará disponível em **http://localhost:5000**. Confira a resposta JSON em **http://localhost:5000/api/web/**.
 
-`run.py` recarrega automaticamente a API quando o código Python muda, sem
-habilitar o debugger por padrão. Se a API já estava aberta antes dessa mudança,
-encerre com **Ctrl+C** e execute o comando novamente. Para desativar a recarga,
-defina `FLASK_RELOAD=0`. O deploy com Gunicorn não utiliza essa recarga.
+<details>
+<summary>Alternativa para Linux/macOS</summary>
 
-### 6. Iniciar o painel
+Prepare o ambiente na raiz do repositório:
 
-Abra o **terminal 2** na raiz do projeto:
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+test -f .env || cp .env.example .env
+.venv/bin/python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Preencha o `.env` conforme o exemplo acima. Em seguida:
+
+```bash
+.venv/bin/python -m flask --app app:create_app db upgrade heads
+.venv/bin/python -m flask --app app:create_app criar-superadmin --email admin@suaempresa.com --gerar-senha
+.venv/bin/python run.py
+```
+
+</details>
+
+### Web Admin
+
+Em **outro terminal**, partindo da raiz do repositório:
 
 ```powershell
 cd admin_web
@@ -135,125 +179,93 @@ flutter pub get
 flutter run -d chrome --web-port=3000 --dart-define=ENABLE_MOCK_AUTH=false
 ```
 
-O painel abre em **http://localhost:3000**. Entre com a conta real do passo 4
-ou com uma conta já cadastrada.
+Abra **http://localhost:3000** e entre com a conta real de Superadmin. Cadastre a empresa e seu responsável RH; depois, use a conta RH para gerenciar funcionários, setores, escalas e alocações. O acesso dos funcionários ao app também é gerado pelo RH.
 
-O painel usa `http://localhost:5000/api/web/` como endereço padrão da API.
-O `CORS_ORIGINS` do `.env` permite que o navegador na porta 3000 acesse a API.
-
-**Para conferir a persistência:** entre como Superadmin, cadastre uma empresa
-com os dados e a senha inicial do RH e atualize a página. A empresa deve
-continuar na lista: empresa e conta RH são gravadas juntas no Supabase.
-
-## Uso diário
-
-Após a configuração inicial, abra dois terminais na raiz do projeto:
-
-| Terminal | Aplicação | Endereço |
-| --- | --- | --- |
-| 1 | API Flask | http://localhost:5000 |
-| 2 | Painel Flutter Web | http://localhost:3000 |
-
-**Terminal 1:**
+O endereço padrão é `http://localhost:5000/api/web/`. Para usar outro backend:
 
 ```powershell
-.\.venv\Scripts\python.exe run.py
+flutter run -d chrome --web-port=3000 --dart-define=ENABLE_MOCK_AUTH=false --dart-define=API_BASE_URL=https://SUA_API/api/web/
 ```
 
-**Terminal 2:**
+Inclua a origem do painel em `CORS_ORIGINS` e reinicie a API após alterar o `.env`. A demonstração visual pode ser habilitada com `ENABLE_MOCK_AUTH=true`; ela não substitui uma conta real para operações no banco.
 
-```powershell
-cd admin_web
-flutter run -d chrome --web-port=3000 --dart-define=ENABLE_MOCK_AUTH=false
+### Mobile
+
+Abra **a pasta do projeto mobile, no repositório separado**, e execute:
+
+```bash
+flutter pub get
+flutter devices
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:5000 --dart-define=ALLOW_DEV_HTTP=true
 ```
 
-Use `Ctrl+C` no respectivo terminal para encerrar cada aplicação. Após mudar
-o `.env`, reinicie a API. Após atualizar dependências ou migrations, repita
-a instalação correspondente e o comando do passo 3.
+Esse exemplo usa um emulador Android com a API executando no mesmo computador. `10.0.2.2` aponta para o host do emulador. Para outro ambiente, configure o endereço acessível da API; em produção, utilize HTTPS.
 
-## Demonstração opcional
+O mobile usa a **raiz da API**, sem o sufixo `/api/web/`. Não configure credenciais PostgreSQL ou chaves administrativas do Supabase no aplicativo.
 
-Para explorar as telas sem iniciar a API, execute na pasta `admin_web`:
+**Primeiro acesso:** o RH cria o funcionário, gera sua conta, autoriza o `device_uuid` e configura seus vínculos de setor/escala. O aplicativo realiza login e uma carga inicial válida com internet antes de depender do cache offline. Não há autocadastro no app.
 
-```powershell
-flutter run -d chrome --web-port=3000 --dart-define=ENABLE_MOCK_AUTH=true
-```
+### Validação e documentação
 
-| E-mail | Perfil | Senha |
-| --- | --- | --- |
-| admin@teste.com | Superadmin | admin |
-| rh@teste.com | RH | admin |
-| gestor@teste.com | Gestor | admin |
-
-O modo de demonstração precisa ser habilitado explicitamente e permite testar
-a navegação. Os módulos que consultam ou alteram o banco exigem uma conta real.
-Para cadastrar feriados, afastamentos, funcionários, setores e escalas, entre
-com o RH da empresa; Superadmin gerencia as empresas e suas contas RH.
-
-## Estado atual do projeto
-
-| Módulo | Disponível |
-| --- | --- |
-| Login e empresas | Autenticação JWT e cadastro, edição e desativação persistidos no banco. |
-| Funcionários | Listagem, cadastro, edição e desativação pelo RH via `/api/web/funcionarios`, com matrícula única por empresa e histórico preservado. |
-| Setores | CRUD real do RH em `/api/web/setores`, com mapa OpenStreetMap, raio em metros e políticas de ponto. Exclusão bloqueada quando houver alocações, inclusive encerradas. |
-| Alocações | Funcionário, setor, escala opcional e período consultados na API. Cadastro e encerramento persistidos em `/api/web/alocacoes`, sem exclusão do histórico. Com escala, informe início e fim para validar conflitos. |
-| Dashboard e escalas do painel | Indicadores reais por empresa; CRUD de escalas 5x2, Diurno, 12x36 e 24x72. Escalas com histórico permitem editar nome/status; alterar turnos exige outra escala. |
-| Motor de escalas e dispositivos | Projeção noturna e validação de conflitos na criação de alocações. Revogação pessoal e decorator de segurança disponíveis para a integração mobile. |
-| Feriados, afastamentos e espelho | CRUD real em Justificativas; upload/download privado de atestados PDF/PNG/JPEG até 10 MB. Equipe consulta o histórico e Relatórios recebe o espelho mensal do Flask. RH cadastra/remove; Gestor consulta equipe e justificativas. [Guia de uso](docs/W06-admin-web.md). |
-| Sync mobile | `GET /api/v1/mobile/sync`: carga pessoal ou do setor com hora UTC, JWT e aparelho autorizado. |
-| Ponto offline | API de lotes idempotentes, geofencing e upload de selfies; aplicativo mobile ainda não implementado. |
-
-## Problemas comuns
-
-| Situação | Como resolver |
-| --- | --- |
-| `python` ou `flutter` não encontrado | Confira a instalação e o PATH; reabra o terminal. |
-| Falha ao atualizar o banco | Confira host, usuário e senha no `.env`; use `db upgrade heads` conforme o passo 3. |
-| Credenciais de login inválidas | Use a senha da conta real; consulte o arquivo indicado ao criar o Superadmin. |
-| Painel não conecta à API | Confira se o terminal 1 está aberto e se `CORS_ORIGINS` permite a porta 3000. |
-| Empresas indisponíveis em demonstração | Reinicie o painel com `ENABLE_MOCK_AUTH=false` e entre com uma conta real. |
-| Cadastros ou anexos indisponíveis | Execute `db upgrade heads`, reinicie Flask/Flutter e entre com uma conta RH real. Os dados são carregados do banco ao reabrir o painel. |
-
-Para usar uma API em outro endereço, adicione ao comando Flutter:
-`--dart-define=API_BASE_URL=https://SUA_API/api/web/`.
-
-## Testes
-
-**Backend — na raiz do projeto:**
+Backend, na raiz do projeto:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-Os testes PostgreSQL usam `TEST_DATABASE_URL`, com uma conexão de teste
-que permita criar schemas e assumir o papel `pg_read_all_data`.
-Sem essa variável, os testes que precisam de banco são ignorados.
+Os testes de integração PostgreSQL exigem `TEST_DATABASE_URL` apontando para um banco de teste preparado para criar schemas e assumir o papel `pg_read_all_data`. Sem essa variável, esses testes são ignorados.
 
-**Painel — na pasta `admin_web`:**
+Painel, na pasta `admin_web`:
 
-```powershell
+```bash
 flutter analyze
 flutter test
 ```
 
-## Estrutura e documentação
+| Assunto | Referência |
+| --- | --- |
+| Autenticação e permissões | [W01 — Auth](docs/W01-auth.md) |
+| Setores e mapa | [W02 — Web Admin](docs/W02-admin-web.md) |
+| Alocações e transferências | [Regras de alocação](docs/ALOCACOES.md) |
+| Escalas e conflitos | [Fundação W04–W07](docs/W04-W07-fundacao.md) |
+| Feriados, afastamentos e apuração | [Espelho histórico](docs/W06-espelho.md) |
+| Autorização de aparelhos compartilhados | [W07 — Dispositivos](docs/W07-dispositivos-admin.md) |
+| Carga inicial do aplicativo | [W08 — Sync](docs/W08-sync.md) |
+| Lotes offline e selfies | [W09 — API de ponto](docs/W09.md) |
+| Deploy com build local e Portainer | [Azure](docs/DEPLOY-AZURE.md) |
 
-```text
-app/         API: modelos, Services, middleware e rotas
-admin_web/   Painel administrativo Flutter
-migrations/  Histórico de alterações do banco
-tests/       Testes do backend
-docs/        Guias técnicos por tarefa
-run.py       Inicialização da API em desenvolvimento
-```
+## Features
 
-- [Painel: organização, permissões e compilação](admin_web/README.md).
-- [W01–W03: autenticação, empresas e funcionários](docs/W01-auth.md).
-- [W02: setores, mapa e contrato da API](docs/W02-admin-web.md).
-- [W04–W07: escalas, conflitos e dispositivos](docs/W04-W07-fundacao.md).
-- [W06: feriados, afastamentos e espelho histórico](docs/W06-espelho.md).
-- [W06 no painel: equipe, justificativas e relatórios](docs/W06-admin-web.md).
-- [W08: sincronização inicial mobile e contrato do payload](docs/W08-sync.md).
-- [W09: marcações offline e selfies](docs/W09.md).
+| Regra | Comportamento |
+| --- | --- |
+| **W01 — Empresas e autenticação** | JWT com validade, senhas com hash e erro de login genérico. Empresas inativas não permitem login. O `empresa_id` vem da sessão autenticada e restringe as operações. Superadmin administra empresas e contas RH; não recebe acesso irrestrito aos dados internos. |
+| **W02 — Geofencing e políticas** | Setores definem centro, raio positivo, exigência de selfie, dispensa de localização e ação fora do perímetro: bloquear ou deixar pendente. A distância é calculada no servidor. Setores com alocações não podem ser excluídos. |
+| **W03 — Funcionários e histórico** | Matrícula única por empresa. Transferir encerra o vínculo anterior e cria outro em uma transação; uma falha desfaz ambos. O fim pode permanecer nulo. Mudanças realizadas por Gestores exibem advertência sobre o impacto no espelho. |
+| **W04/W05 — Escalas e conflitos** | Modelos 5x2, Diurno, 12x36 e 24x72, projeção de ciclos e virada da meia-noite. Conflitos consideram os intervalos reais em todos os setores. Horários contíguos são permitidos; vínculos indeterminados usam horizonte explícito de validação de dez anos. |
+| **W06 — Feriados e afastamentos** | Feriados por empresa/setor e afastamentos com validação de sobreposição. O espelho considera a alocação histórica vigente e os abonos aplicáveis a cada dia. |
+| **W07 — Dispositivos autorizados** | Aparelhos pessoais e compartilhados, com vínculos e permissões por usuário/setor. Dispositivos inativos são bloqueados; a revogação preserva as marcações anteriores. |
+| **W08 — Carga inicial** | Sincronização protegida por JWT e `X-Device-UUID`, com horário UTC do servidor, modo de operação e dados autorizados para uso offline. Ausência de alocação recebe resposta informativa, sem erro interno. |
+| **W09 — Sincronização offline** | UUID gerado no aparelho garante idempotência do lote. A API preserva horário original, desvio de relógio, indicação offline e horário de recebimento. Selfies usam upload separado associado à marcação. |
+| **Imutabilidade do ponto** | `registros_ponto` não recebe UPDATE nem DELETE. Inserções manuais, correções, aprovações e invalidações usam contra-registros em `justificativas_ajustes`, mantendo o original e o histórico das decisões. |
+| **Experiência do painel** | Layout responsivo, tema claro/escuro persistido, pesquisa por nome/matrícula e seletores assíncronos com debounce. Atualizações automáticas respeitam a visibilidade da aplicação. |
+
+As regras ficam no backend: validações e controles visuais do Flutter ajudam o usuário, mas não substituem a autorização e a verificação no servidor.
+
+<a id="contributors-license"></a>
+
+## Contributors & License
+
+### Contributors
+
+Contribuições são bem-vindas: melhorias de acessibilidade, testes, documentação e relatos de problemas ajudam a evoluir o projeto.
+
+Antes de enviar uma alteração, descreva o problema e o comportamento esperado, mantenha as regras na Service Layer e execute as verificações da área modificada. Não inclua `.env`, tokens, credenciais nem dados reais de funcionários em commits ou exemplos.
+
+<!-- Adicione aqui os nomes e perfis dos contribuidores do projeto. -->
+
+### License
+
+A licença ainda não foi formalizada neste repositório. **MIT é a proposta indicada pelo badge deste modelo**; sua adoção deve ser confirmada com a inclusão do arquivo `LICENSE` e a identificação dos titulares dos direitos autorais.
+
+Organização da documentação inspirada no [README do Downshift](https://github.com/downshift-js/downshift#readme).

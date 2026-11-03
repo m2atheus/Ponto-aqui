@@ -386,6 +386,8 @@ def test_simultaneous_deliveries_insert_exactly_one_row(capfd):
         assert sum(not body["resultados"][0]["duplicada"] for body, _ in results) == 1
         with application.app_context():
             assert db.session.scalar(select(func.count()).select_from(RegistrosPonto)) == 1
+            # Libera a transação de leitura antes do DDL de downgrade em outra conexão.
+            db.session.commit()
             with pytest.raises(SystemExit) as blocked:
                 downgrade(directory=str(Path(__file__).resolve().parents[1] / "migrations"), revision="0001")
             assert blocked.value.code == 1

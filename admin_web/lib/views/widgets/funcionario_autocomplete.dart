@@ -15,11 +15,15 @@ class FuncionarioAutocomplete extends StatefulWidget {
     required this.repository,
     required this.onChanged,
     this.enabled = true,
+    this.initialValue,
+    this.ativo,
   });
 
   final FuncionarioRepository repository;
   final ValueChanged<Funcionario?> onChanged;
   final bool enabled;
+  final Funcionario? initialValue;
+  final bool? ativo;
 
   @override
   State<FuncionarioAutocomplete> createState() =>
@@ -46,6 +50,9 @@ class _FuncionarioAutocompleteState extends State<FuncionarioAutocomplete> {
   @override
   void initState() {
     super.initState();
+    _selected = widget.initialValue;
+    _text.text = _selected == null ? '' : _label(_selected!);
+    _lastText = _text.text;
     _text.addListener(_textChanged);
   }
 
@@ -108,7 +115,11 @@ class _FuncionarioAutocompleteState extends State<FuncionarioAutocomplete> {
       final cancel = _cancel = CancelToken();
       setState(() => _loading = true);
       try {
-        final rows = await widget.repository.buscar(q, cancelToken: cancel);
+        final rows = await widget.repository.buscar(
+          q,
+          ativo: widget.ativo,
+          cancelToken: cancel,
+        );
         if (!mounted || request != _request) return;
         setState(() {
           _loading = false;
@@ -139,6 +150,7 @@ class _FuncionarioAutocompleteState extends State<FuncionarioAutocomplete> {
   @override
   Widget build(BuildContext context) => FormField<Funcionario>(
     key: _fieldKey,
+    initialValue: widget.initialValue,
     validator: (_) => _selected == null || _text.text != _label(_selected!)
         ? 'Selecione um funcionário da busca.'
         : null,

@@ -65,7 +65,7 @@ def test_lists_are_scoped_and_include_inactive_records_for_history(alocacoes_api
     assert [row["id"] for row in rows] == [str(tenants[0].assignment.id)]
     foreign = client.get("/api/web/alocacoes", headers=headers,
         query_string={"funcionario_id": str(tenants[1].employee.id)})
-    assert foreign.json == {"alocacoes": []}
+    assert foreign.json == {"alocacoes": [], "funcionarios": [], "setores": []}
 
 
 @pytest.mark.postgres
@@ -193,6 +193,78 @@ def test_optional_schedule_checks_other_sectors_and_allows_touching_shifts(aloca
     accepted = client.post("/api/web/alocacoes", headers=headers, json=payload)
     assert accepted.status_code == 201
     assert accepted.json["alocacao"]["escala_id"] == str(new_schedule.id)
+
+
+@pytest.mark.postgres
+def test_schedule_allocation_without_end_stays_open_and_exposes_horizon(alocacoes_api, session, tenants):
+    from test_schedule_conflicts_w05 import existing, schedule
+    client, headers, _ = alocacoes_api
+    tenant = tenants[0]
+    existing(session, tenant, start=8, end=19)
+    escala = schedule(session, tenant, start=19, end=23)
+    session.commit()
+    response = client.post("/api/web/alocacoes", headers=headers,
+        json=cadastro(tenant, escala_id=str(escala.id), data_fim=None))
+    assert response.status_code == 201, response.json
+    saved = response.json["alocacao"]
+    assert saved["data_fim"] is None
+    assert session.get(Alocacoes, saved["id"]).data_fim is None
+    assert response.json["validacao_escala"] == {
+        "periodo_indeterminado": True, "horizonte_anos": 10, "ate": "2036-10-01",
+    }
+
+
+@pytest.mark.postgres
+def test_employee_without_login_can_be_allocated_then_linked_without_rewriting_history(alocacoes_api, session, tenants):
+    from app.services.funcionario_service import FuncionarioService
+    from test_schedule_conflicts_w05 import schedule
+    client, headers, rh = alocacoes_api
+    tenant = tenants[0]
+    employee = Funcionarios(empresa_id=tenant.company.id, nome="Funcionário sem login", matricula="SEM-LOGIN")
+    escala = schedule(session, tenant)
+    session.add(employee)
+    session.commit()
+    response = client.post("/api/web/alocacoes", headers=headers, json=cadastro(
+        tenant, funcionario_id=str(employee.id), escala_id=str(escala.id), data_fim=None,
+    ))
+    assert response.status_code == 201, response.json
+    saved = response.json["alocacao"]
+    row = session.get(Alocacoes, saved["id"])
+    assert employee.usuario_id is None and row.usuario_id is None
+    assert row.data_fim is None and row.escala_id == escala.id
+    result, status = FuncionarioService.vincular_acesso(
+        rh.id, tenant.company.id, employee.id,
+        {"email": "sem-login-agora-com-acesso@example.com", "senha": "Senha-teste-123"}, session=session,
+    )
+    assert status == 201, result
+    session.refresh(row)
+    assert str(row.usuario_id) == result["usuario"]["id"]
+    assert str(row.id) == saved["id"] and row.data_inicio.isoformat() == saved["data_inicio"]
+    assert row.data_fim is None and row.escala_id == escala.id
+
+
+@pytest.mark.postgres
+def test_employee_without_login_still_has_cross_sector_conflicts_and_touching_endpoints(alocacoes_api, session, tenants):
+    from test_schedule_conflicts_w05 import schedule
+    client, headers, _ = alocacoes_api
+    tenant = tenants[0]
+    employee = Funcionarios(empresa_id=tenant.company.id, nome="Sem acesso com jornada", matricula="SEM-LOGIN-2")
+    other = Setores(empresa_id=tenant.company.id, nome="Outro setor sem login", latitude_centro=0,
+        longitude_centro=0, raio_metros=100)
+    first = schedule(session, tenant, name="Primeiro turno", start=8, end=19)
+    overlap = schedule(session, tenant, name="Turno sobreposto", start=18, end=23)
+    touching = schedule(session, tenant, name="Turno contíguo", start=19, end=23)
+    session.add_all([employee, other])
+    session.commit()
+    payload = cadastro(tenant, funcionario_id=str(employee.id), escala_id=str(first.id), data_fim=None)
+    assert client.post("/api/web/alocacoes", headers=headers, json=payload).status_code == 201
+    payload.update(setor_id=str(other.id), escala_id=str(overlap.id))
+    rejected = client.post("/api/web/alocacoes", headers=headers, json=payload)
+    assert rejected.status_code == 409 and rejected.json["erro"]["codigo"] == "CONFLITO_ESCALA"
+    payload["escala_id"] = str(touching.id)
+    accepted = client.post("/api/web/alocacoes", headers=headers, json=payload)
+    assert accepted.status_code == 201, accepted.json
+    assert session.get(Funcionarios, employee.id).usuario_id is None
 
 
 @pytest.mark.postgres

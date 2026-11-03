@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 
 import '../models/management_json.dart';
@@ -18,6 +20,32 @@ class PontoAdminRepository {
   PontoAdminRepository(this._dio, {required this.empresaId});
   final Dio _dio;
   final String empresaId;
+
+  Future<Uint8List> baixarSelfie(
+    String registroId, {
+    CancelToken? cancelToken,
+  }) => repositoryRequest(() async {
+    // URL controlada no mesmo servidor; não envia JWT para foto_url externo.
+    final response = await _dio.get<List<int>>(
+      _endpoint('pontos/${repositoryResourceId(registroId)}/selfie'),
+      options: Options(responseType: ResponseType.bytes),
+      cancelToken: cancelToken,
+    );
+    final mime = response.headers
+        .value('content-type')
+        ?.split(';')
+        .first
+        .trim();
+    final bytes = response.data;
+    if (response.statusCode != 200 ||
+        !{'image/jpeg', 'image/png'}.contains(mime) ||
+        bytes == null ||
+        bytes.isEmpty ||
+        bytes.length > 2 * 1024 * 1024) {
+      throw const FormatException('Selfie inválida.');
+    }
+    return Uint8List.fromList(bytes);
+  });
 
   String _endpoint(String acao) {
     final base = Uri.parse(_dio.options.baseUrl);
@@ -52,6 +80,73 @@ class PontoAdminRepository {
     'registro_original_id': repositoryResourceId(registroOriginalId),
     'nova_data_hora': novaDataHora.toUtc().toIso8601String(),
     'motivo_texto': motivoTexto.trim(),
+  });
+
+  Future<void> invalidarMarcacao({
+    required String registroId,
+    required String motivoTexto,
+  }) => _decidir(registroId, motivoTexto, aprovar: false);
+
+  Future<void> aprovarMarcacao({
+    required String registroId,
+    required String motivoTexto,
+  }) => _decidir(registroId, motivoTexto, aprovar: true);
+
+  Future<void> reaprovarMarcacao({
+    required String registroId,
+    required String invalidacaoId,
+    required String motivoTexto,
+  }) => _decidir(
+    registroId,
+    motivoTexto,
+    aprovar: true,
+    reaprovar: true,
+    invalidacaoId: invalidacaoId,
+  );
+
+  Future<void> _decidir(
+    String registroId,
+    String motivoTexto, {
+    required bool aprovar,
+    bool reaprovar = false,
+    String? invalidacaoId,
+  }) => repositoryRequest(() async {
+    final id = repositoryResourceId(registroId);
+    final motivo = motivoTexto.trim();
+    if (motivo.isEmpty || motivo.length > 5000) {
+      throw const RepositoryFailure(
+        'Informe uma justificativa de até 5000 caracteres.',
+      );
+    }
+    final response = await _dio.post<Object?>(
+      _endpoint(
+        'pontos/$id/${reaprovar
+            ? 'reaprovar'
+            : aprovar
+            ? 'aprovar'
+            : 'invalidar'}',
+      ),
+      data: {
+        'motivo_texto': motivo,
+        if (reaprovar)
+          'invalidacao_id': repositoryResourceId(invalidacaoId ?? ''),
+      },
+    );
+    final ajuste = managementObject(managementObject(response.data)['ajuste']);
+    managementString(ajuste['id'], 'id');
+    managementString(ajuste['gestor_aprovador_id'], 'gestor_aprovador_id');
+    if (response.statusCode != 201 ||
+        ajuste['empresa_id'] != empresaId ||
+        ajuste['registro_original_id'] != id ||
+        ajuste['status_analise'] != 'APROVADO' ||
+        ajuste['tipo_ocorrencia'] !=
+            (reaprovar
+                ? 'REAPROVACAO_RH'
+                : aprovar
+                ? 'APROVACAO_GESTOR'
+                : 'INVALIDACAO_GESTOR')) {
+      throw const FormatException('Decisão não confirmada pela API.');
+    }
   });
 
   Future<void> _salvar(

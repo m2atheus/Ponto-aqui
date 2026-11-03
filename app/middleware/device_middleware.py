@@ -20,6 +20,7 @@ def require_device_uuid(view):
             dispositivo = DeviceService.validar_dispositivo(
                 empresa_id=get_jwt().get("empresa_id"), usuario_id=get_jwt_identity(),
                 device_uuid=request.headers.get("X-Device-UUID"), claims=get_jwt(),
+                setor_solicitado=request.args.get("setor_id"),
             )
         except DeviceError as error:
             payload, status = error.response()

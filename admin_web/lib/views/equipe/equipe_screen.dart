@@ -5,11 +5,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/smart_polling.dart';
 
 import '../../models/funcionario.dart';
+import '../../models/alocacao.dart';
+import '../../models/auth_session.dart';
 import '../../models/w06.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/alocacoes_provider.dart';
 import '../../providers/w06_provider.dart';
 import '../../utils/civil_date.dart';
 import '../widgets/w06_widgets.dart';
 import '../widgets/responsive_table_container.dart';
+import '../alocacoes/mudar_alocacao_dialog.dart';
 
 class EquipeScreen extends ConsumerStatefulWidget {
   const EquipeScreen({super.key});
@@ -38,13 +43,61 @@ class _EquipeScreenState extends ConsumerState<EquipeScreen>
 
   Future<void> _detalhes(Funcionario funcionario, W06Data data) async {
     if (_dialogAberto) return;
+    final sessao = ref.read(authProvider).asData?.value;
+    final podeMudar =
+        sessao != null &&
+        !sessao.isMock &&
+        funcionario.ativo &&
+        {UserRole.rh, UserRole.gestor}.contains(sessao.user.role) &&
+        sessao.user.companyId == funcionario.empresaId;
     setState(() => _dialogAberto = true);
     try {
-      await showDialog<void>(
+      final mudou = await showDialog<bool>(
         context: context,
         useRootNavigator: false,
-        builder: (_) => _HistoricoDialog(funcionario: funcionario, data: data),
+        builder: (historicoContext) => _HistoricoDialog(
+          funcionario: funcionario,
+          data: data,
+          onMudar: !podeMudar
+              ? null
+              : (atual) async {
+                  if (ref.read(authProvider).asData?.value?.accessToken !=
+                      sessao.accessToken) {
+                    return;
+                  }
+                  final salvo = await showDialog<bool>(
+                    context: historicoContext,
+                    useRootNavigator: false,
+                    barrierDismissible: false,
+                    builder: (_) => MudarAlocacaoDialog(
+                      alocacao: Alocacao(
+                        id: atual.id,
+                        funcionarioId: funcionario.id,
+                        setorId: atual.setorId,
+                        escalaId: atual.escalaId,
+                        empresaId: funcionario.empresaId,
+                        dataInicio: atual.inicio,
+                        dataFim: atual.fim,
+                      ),
+                      funcionarioNome: funcionario.nome,
+                      setorNome: data.setorNome(atual.setorId),
+                      sessionToken: sessao.accessToken,
+                    ),
+                  );
+                  if (salvo == true && historicoContext.mounted) {
+                    Navigator.pop(historicoContext, true);
+                  }
+                },
+        ),
       );
+      if (mounted &&
+          mudou == true &&
+          ref.read(authProvider).asData?.value?.accessToken ==
+              sessao?.accessToken) {
+        ref.invalidate(w06Provider);
+        ref.invalidate(alocacoesProvider);
+        w06Message(context, 'Escala/setor alterados. Histórico preservado.');
+      }
     } finally {
       if (mounted) setState(() => _dialogAberto = false);
     }
@@ -274,9 +327,14 @@ class _ResumoEquipe extends StatelessWidget {
 }
 
 class _HistoricoDialog extends StatelessWidget {
-  const _HistoricoDialog({required this.funcionario, required this.data});
+  const _HistoricoDialog({
+    required this.funcionario,
+    required this.data,
+    this.onMudar,
+  });
   final Funcionario funcionario;
   final W06Data data;
+  final Future<void> Function(HistoricoAlocacao)? onMudar;
   @override
   Widget build(BuildContext context) {
     final historico =
@@ -356,6 +414,17 @@ class _HistoricoDialog extends StatelessWidget {
                               ),
                             ],
                           ),
+                          if (onMudar != null &&
+                              (a.fim == null ||
+                                  a.fim!.compareTo(hoje) >= 0)) ...[
+                            const SizedBox(height: 16),
+                            OutlinedButton.icon(
+                              key: Key('mudar-equipe-${a.id}'),
+                              onPressed: () => onMudar!(a),
+                              icon: const Icon(Icons.swap_horiz),
+                              label: const Text('Mudar Escala/Setor'),
+                            ),
+                          ],
                         ],
                       ),
                     ),

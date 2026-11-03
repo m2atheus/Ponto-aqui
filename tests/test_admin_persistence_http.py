@@ -141,4 +141,8 @@ def test_team_dashboard_report_read_database_and_role_boundaries(admin_http, ses
     assert c.client.get("/api/web/afastamentos", headers=c.headers).status_code == 200
     assert c.client.post("/api/web/feriados", headers=c.headers, json={}).status_code == 403
     assert c.client.delete(f"/api/web/escalas/{c.own.schedule.id}", headers=c.headers).status_code == 403
-    assert c.client.get("/api/web/relatorios/espelho", headers=c.headers).status_code == 403
+    assert c.client.get("/api/web/relatorios/espelho", headers=c.headers).status_code == 400
+    assert c.client.get("/api/web/relatorios/espelho", headers=c.headers,
+        query_string={"funcionario_id": str(c.own.employee.id), "ano": "2026", "mes": "10"}).status_code == 200
+    assert c.client.get("/api/web/relatorios/espelho", headers=c.headers,
+        query_string={"funcionario_id": str(c.foreign.employee.id), "ano": "2026", "mes": "10"}).status_code == 404

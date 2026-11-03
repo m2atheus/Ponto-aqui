@@ -19,6 +19,7 @@ def sincronizar():
     payload, status = MobileSyncService.sincronizar(
         empresa_id=get_jwt().get("empresa_id"), usuario_id=get_jwt_identity(),
         device_uuid=request.headers.get("X-Device-UUID"), claims=get_jwt(),
+        setor_id=request.args.get("setor_id"),
     )
     response = jsonify(payload)
     response.status_code = status

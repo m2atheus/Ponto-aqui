@@ -172,7 +172,7 @@ class MobileSyncService:
         }
 
     @staticmethod
-    def sincronizar(empresa_id, usuario_id, device_uuid, claims, *, session=None):
+    def sincronizar(empresa_id, usuario_id, device_uuid, claims, *, session=None, setor_id=None):
         """Retorna (DTO, HTTP status); data de vigência usa o fuso da empresa.
 
         Revalida autorização mesmo quando chamado diretamente, sem decorator.
@@ -183,6 +183,7 @@ class MobileSyncService:
         try:
             dispositivo = DeviceService.validar_dispositivo(
                 empresa_id, usuario_id, device_uuid, claims, session=session,
+                setor_solicitado=setor_id,
             )
             empresa_id = dispositivo.empresa_id
             # ID da conta foi validado pelo Service de dispositivo.
@@ -197,7 +198,11 @@ class MobileSyncService:
             if dispositivo.tipo == TipoDispositivo.PESSOAL:
                 payload = MobileSyncService._pessoal(session, empresa_id, usuario_id, hoje, agora)
             else:
-                payload = MobileSyncService._relogio(session, empresa_id, dispositivo.setor_id, hoje)
+                escolhido = UUID(str(setor_id if setor_id is not None else claims.get("setor_id")))
+                payload = MobileSyncService._relogio(session, empresa_id, escolhido, hoje)
+                setores = DeviceService.setores_autorizados(session, empresa_id, usuario_id, dispositivo.id)
+                payload["setores_disponiveis"] = [{"id": str(s.id), "nome": s.nome} for s in setores] or [
+                    {"id": str(escolhido), "nome": payload["setor"]["nome"]}]
             return {"server_timestamp": _timestamp(agora), "data_referencia": hoje.isoformat(),
                     "fuso_horario": empresa.fuso_horario, **payload}, 200
         except DeviceError as error:

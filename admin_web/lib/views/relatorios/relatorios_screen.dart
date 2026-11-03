@@ -11,6 +11,9 @@ import '../../utils/civil_date.dart';
 import '../widgets/w06_widgets.dart';
 import '../widgets/funcionario_autocomplete.dart';
 import 'ponto_ajuste_dialog.dart';
+import 'espelho_ponto_view.dart';
+import 'detalhe_ponto_dialog.dart';
+import 'ponto_invalidacao_dialog.dart';
 
 const _meses = [
   'Janeiro',
@@ -46,6 +49,93 @@ class _RelatoriosScreenState extends ConsumerState<RelatoriosScreen> {
   String? _erro;
   EspelhoMensal? _espelho;
   String? _sessaoDoEspelho;
+
+  Future<void> _verFoto(EspelhoMensal espelho, MarcacaoEspelho ponto) async {
+    final sessao = ref.read(authProvider).asData?.value;
+    if (_dialogAberto ||
+        _carregando ||
+        !ponto.temFoto ||
+        sessao == null ||
+        sessao.isMock ||
+        !{UserRole.rh, UserRole.gestor}.contains(sessao.user.role)) {
+      return;
+    }
+    bool mesmaSessao() =>
+        mounted &&
+        ref.read(authProvider).asData?.value?.accessToken ==
+            sessao.accessToken &&
+        sessao.expiresAt.isAfter(DateTime.now());
+    setState(() => _dialogAberto = true);
+    try {
+      await mostrarDetalhePontoDialog(
+        context: context,
+        ponto: ponto,
+        funcionarioNome: espelho.funcionario.nome,
+        fusoHorario: espelho.fusoHorario,
+        repository: ref.read(pontoAdminRepositoryProvider),
+        podeReaprovarRh: sessao.user.role == UserRole.rh,
+        sessaoValida: mesmaSessao,
+        recarregar: () async {
+          if (mesmaSessao()) await _gerar(propagarErro: true);
+        },
+      );
+    } catch (error) {
+      if (mounted && mesmaSessao()) {
+        w06Message(context, w06Error(error), error: true);
+      }
+    } finally {
+      if (mounted) setState(() => _dialogAberto = false);
+    }
+  }
+
+  Future<void> _invalidar(
+    EspelhoMensal espelho,
+    MarcacaoEspelho ponto, {
+    bool aprovar = false,
+    bool reaprovar = false,
+  }) async {
+    final sessao = ref.read(authProvider).asData?.value;
+    if (_dialogAberto ||
+        _carregando ||
+        (ponto.invalidado && !reaprovar) ||
+        ponto.manual ||
+        (aprovar && !reaprovar && !ponto.podeAprovar) ||
+        (reaprovar &&
+            (!ponto.podeReaprovar || sessao?.user.role != UserRole.rh)) ||
+        sessao == null ||
+        sessao.isMock ||
+        !{UserRole.rh, UserRole.gestor}.contains(sessao.user.role)) {
+      return;
+    }
+    bool mesmaSessao() =>
+        mounted &&
+        ref.read(authProvider).asData?.value?.accessToken ==
+            sessao.accessToken &&
+        sessao.expiresAt.isAfter(DateTime.now());
+    setState(() => _dialogAberto = true);
+    try {
+      await mostrarInvalidacaoPontoDialog(
+        context: context,
+        repository: ref.read(pontoAdminRepositoryProvider),
+        registroId: ponto.id,
+        aprovar: aprovar,
+        reaprovar: reaprovar,
+        invalidacaoId: ponto.invalidacaoId,
+        motivoInvalidacao: ponto.motivoInvalidacao,
+        funcionarioNome: espelho.funcionario.nome,
+        sessaoValida: mesmaSessao,
+        recarregar: () async {
+          if (mesmaSessao()) await _gerar(propagarErro: true);
+        },
+      );
+    } catch (error) {
+      if (mounted && mesmaSessao()) {
+        w06Message(context, w06Error(error), error: true);
+      }
+    } finally {
+      if (mounted) setState(() => _dialogAberto = false);
+    }
+  }
 
   Future<void> _ajustar(EspelhoMensal espelho, [MarcacaoEspelho? ponto]) async {
     final sessao = ref.read(authProvider).asData?.value;
@@ -104,12 +194,15 @@ class _RelatoriosScreenState extends ConsumerState<RelatoriosScreen> {
   });
 
   Future<void> _gerar({bool propagarErro = false}) async {
-    if (_carregando || !_form.currentState!.validate()) return;
+    if (_carregando) return;
+    // Na recarga após uma ação, os filtros já foram validados. O Form pode
+    // estar fora da área construída do ListView, pois a tabela fica abaixo.
+    if (!propagarErro && !(_form.currentState?.validate() ?? false)) return;
     final sessionToken = ref.read(authProvider).asData?.value?.accessToken;
     final pedido = ++_pedido;
     setState(() {
       _carregando = true;
-      _espelho = null;
+      if (!propagarErro) _espelho = null;
       _erro = null;
     });
     try {
@@ -188,7 +281,9 @@ class _RelatoriosScreenState extends ConsumerState<RelatoriosScreen> {
                             : 320,
                         child: FuncionarioAutocomplete(
                           key: ObjectKey(session),
-                          repository: ref.watch(funcionarioRepositoryProvider),
+                          repository: ref.watch(
+                            funcionarioBuscaRepositoryProvider,
+                          ),
                           enabled: !_carregando && !_dialogAberto,
                           onChanged: (f) =>
                               _alterar(() => _funcionarioId = f?.id),
@@ -329,9 +424,28 @@ class _RelatoriosScreenState extends ConsumerState<RelatoriosScreen> {
                 ),
                 _Total(label: 'Faltas', minutos: espelho.totalApi('faltas')),
                 _Total(label: 'Atrasos', minutos: espelho.totalApi('atrasos')),
+                _Total(
+                  label: 'Horas extras',
+                  minutos: espelho.totalApi('extras'),
+                  verde: true,
+                ),
               ],
             ),
             const SizedBox(height: 16),
+            const Text(
+              'Horas extras: excedente diário das horas trabalhadas sobre as exigíveis, '
+              'somente em dias sem pendências e com jornada encerrada. Não inclui adicionais nem banco de horas.',
+            ),
+            if (espelho.dias.any(
+              (d) => d.pendencias.contains('SEQUENCIA_INCOMPLETA_OU_INVALIDA'),
+            ))
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text(
+                  'Há batidas sem par de entrada/saída. Aprovar uma saída isolada não gera horas; '
+                  'o RH deve conferir e inserir ou corrigir a batida faltante com justificativa.',
+                ),
+              ),
             if (!espelho.apuracaoDefinitiva)
               Card(
                 child: Padding(
@@ -342,59 +456,7 @@ class _RelatoriosScreenState extends ConsumerState<RelatoriosScreen> {
                   ),
                 ),
               ),
-            W06Table(
-              columns: const [
-                DataColumn(label: Text('Data')),
-                DataColumn(label: Text('Setor / Escala histórica')),
-                DataColumn(label: Text('Situação')),
-                DataColumn(label: Text('Previstas')),
-                DataColumn(label: Text('Trabalhadas')),
-                DataColumn(label: Text('Abonadas')),
-                DataColumn(label: Text('Falta / Atraso')),
-                DataColumn(label: Text('Motivo')),
-              ],
-              rows: [
-                for (final dia in espelho.dias)
-                  DataRow(
-                    key: ValueKey('espelho-${dia.data}'),
-                    color: dia.justificado
-                        ? WidgetStatePropertyAll(
-                            Colors.green.withValues(alpha: .07),
-                          )
-                        : null,
-                    cells: [
-                      DataCell(Text(civilDateDisplay(dia.data))),
-                      DataCell(
-                        SizedBox(
-                          width: 200,
-                          child: Text(
-                            '${dia.setor ?? '—'}\n${dia.escala ?? 'Sem escala'}',
-                          ),
-                        ),
-                      ),
-                      DataCell(_Situacao(dia: dia)),
-                      DataCell(Text(w06Hours(dia.previstos))),
-                      DataCell(Text(w06Hours(dia.trabalhados))),
-                      DataCell(Text(w06Hours(dia.abonados))),
-                      DataCell(
-                        Text(
-                          '${w06Hours(dia.faltas)} / ${w06Hours(dia.atrasos)}',
-                        ),
-                      ),
-                      DataCell(
-                        SizedBox(
-                          width: 220,
-                          child: Text(
-                            dia.descricao,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-              ],
-            ),
+            EspelhoPontoView(dias: espelho.dias),
             const SizedBox(height: 20),
             Text(
               'Batidas do funcionário',
@@ -406,7 +468,7 @@ class _RelatoriosScreenState extends ConsumerState<RelatoriosScreen> {
             ),
             const SizedBox(height: 12),
             W06Table(
-              emptyMessage: 'Nenhuma batida original neste mês.',
+              emptyMessage: 'Nenhuma batida ou ajuste aprovado neste mês.',
               columns: const [
                 DataColumn(label: Text('Data')),
                 DataColumn(label: Text('Hora')),
@@ -421,38 +483,127 @@ class _RelatoriosScreenState extends ConsumerState<RelatoriosScreen> {
                       key: ValueKey('batida-${ponto.id}'),
                       cells: [
                         DataCell(Text(civilDateDisplay(dia.data))),
-                        DataCell(Text(ponto.dataHora.substring(11, 16))),
                         DataCell(
-                          Text(switch (ponto.tipo) {
+                          Text(
+                            ponto.horarioEfetivo.substring(11, 16),
+                            style: TextStyle(
+                              decoration: ponto.invalidado
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                            ),
+                          ),
+                        ),
+                        DataCell(
+                          Text(switch (ponto.tipoEfetivo) {
                             'InicioIntervalo' => 'Início do intervalo',
                             'FimIntervalo' => 'Fim do intervalo',
                             'Saida' => 'Saída',
-                            _ => ponto.tipo,
+                            _ => ponto.tipoEfetivo,
                           }),
                         ),
                         DataCell(
-                          Text(switch (ponto.situacao) {
-                            'PendenteAnalise' => 'Pendente de análise',
-                            _ => ponto.situacao,
-                          }),
+                          Tooltip(
+                            message: [
+                              if (ponto.corrigido)
+                                'Original: ${ponto.dataHora}',
+                              ponto.motivoInvalidacao ??
+                                  ponto.motivoCorrecao ??
+                                  ponto.motivoAprovacao ??
+                                  '',
+                              ponto.motivosOriginais,
+                              ponto.resumoDecisoes,
+                            ].where((s) => s.isNotEmpty).join('\n'),
+                            child: Text(
+                              ponto.situacaoExibida,
+                              style: ponto.invalidado
+                                  ? TextStyle(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .error,
+                                    )
+                                  : null,
+                            ),
+                          ),
                         ),
                         DataCell(
-                          IconButton(
-                            key: ValueKey('editar-batida-${ponto.id}'),
-                            tooltip: 'Editar Batida',
-                            onPressed:
-                                _carregando ||
-                                    _dialogAberto ||
-                                    ref
-                                            .read(authProvider)
-                                            .asData
-                                            ?.value
-                                            ?.user
-                                            .role !=
-                                        UserRole.rh
-                                ? null
-                                : () => _ajustar(espelho, ponto),
-                            icon: const Icon(Icons.edit_outlined),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (ponto.temFoto)
+                                IconButton(
+                                  key: ValueKey('selfie-batida-${ponto.id}'),
+                                  tooltip: 'Visualizar selfie',
+                                  onPressed: _carregando || _dialogAberto
+                                      ? null
+                                      : () => _verFoto(espelho, ponto),
+                                  icon: const Icon(Icons.camera_alt_outlined),
+                                ),
+                              if (!ponto.manual &&
+                                  ref
+                                          .read(authProvider)
+                                          .asData
+                                          ?.value
+                                          ?.user
+                                          .role ==
+                                      UserRole.rh)
+                                IconButton(
+                                  key: ValueKey('editar-batida-${ponto.id}'),
+                                  tooltip: 'Editar Batida',
+                                  onPressed:
+                                      ponto.invalidado ||
+                                          _carregando ||
+                                          _dialogAberto ||
+                                          ref
+                                                  .read(authProvider)
+                                                  .asData
+                                                  ?.value
+                                                  ?.user
+                                                  .role !=
+                                              UserRole.rh
+                                      ? null
+                                      : () => _ajustar(espelho, ponto),
+                                  icon: const Icon(Icons.edit_outlined),
+                                ),
+                              InvalidarPontoButton(
+                                key: ValueKey('invalidar-batida-${ponto.id}'),
+                                onPressed:
+                                    ponto.invalidado ||
+                                        ponto.manual ||
+                                        _carregando ||
+                                        _dialogAberto
+                                    ? null
+                                    : () => _invalidar(espelho, ponto),
+                              ),
+                              if (ponto.podeAprovar) ...[
+                                const SizedBox(width: 8),
+                                AprovarPontoButton(
+                                  key: ValueKey('aprovar-batida-${ponto.id}'),
+                                  onPressed: _carregando || _dialogAberto
+                                      ? null
+                                      : () => _invalidar(
+                                          espelho,
+                                          ponto,
+                                          aprovar: true,
+                                        ),
+                                ),
+                              ],
+                              if (ponto.podeReaprovar &&
+                                  session.user.role == UserRole.rh) ...[
+                                const SizedBox(width: 8),
+                                AprovarPontoButton(
+                                  key: ValueKey('reaprovar-batida-${ponto.id}'),
+                                  reaprovar: true,
+                                  onPressed: _carregando || _dialogAberto
+                                      ? null
+                                      : () => _invalidar(
+                                          espelho,
+                                          ponto,
+                                          aprovar: true,
+                                          reaprovar: true,
+                                        ),
+                                ),
+                              ],
+                            ],
                           ),
                         ),
                       ],
@@ -496,48 +647,4 @@ class _Total extends StatelessWidget {
       ),
     ),
   );
-}
-
-class _Situacao extends StatelessWidget {
-  const _Situacao({required this.dia});
-  final DiaEspelho dia;
-  @override
-  Widget build(BuildContext context) {
-    final label = switch (dia.status) {
-      'ABONADO_JUSTIFICADO' => 'Abonado / Justificado',
-      'ABONO_PARCIAL' => 'Abono parcial',
-      'ATRASO' => 'Atraso',
-      'JORNADA_INCOMPLETA' => 'Jornada incompleta',
-      'APURACAO_PENDENTE' => 'Aguardando análise',
-      'TRABALHADO' => 'Trabalhado',
-      'FOLGA' => 'Folga',
-      'FALTA' => 'Falta',
-      'PREVISTO' => 'Previsto',
-      'EM_ANDAMENTO' => 'Em andamento',
-      _ => 'Sem alocação',
-    };
-    final color = dia.justificado
-        ? (Theme.of(context).brightness == Brightness.dark
-              ? Colors.green.shade300
-              : Colors.green.shade800)
-        : dia.status == 'FALTA'
-        ? Theme.of(context).colorScheme.error
-        : Theme.of(context).colorScheme.primary;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          dia.justificado
-              ? Icons.verified_outlined
-              : dia.status == 'FALTA'
-              ? Icons.error_outline
-              : Icons.schedule,
-          color: color,
-          size: 18,
-        ),
-        const SizedBox(width: 6),
-        Text(label, style: TextStyle(color: color)),
-      ],
-    );
-  }
 }

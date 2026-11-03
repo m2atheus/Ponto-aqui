@@ -67,6 +67,13 @@ class StatusAjuste(str, enum.Enum):
     REJEITADO = "Rejeitado"
 
 
+class TipoOcorrencia(str, enum.Enum):
+    AJUSTE = "AJUSTE"
+    INVALIDACAO_GESTOR = "INVALIDACAO_GESTOR"
+    APROVACAO_GESTOR = "APROVACAO_GESTOR"
+    REAPROVACAO_RH = "REAPROVACAO_RH"
+
+
 class PoliticaLocalizacao(str, enum.Enum):
     BLOQUEAR = "Bloquear"
     PENDENTE = "Pendente"
@@ -486,6 +493,7 @@ class Dispositivos(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.Model):
     setor = db.relationship("Setores", viewonly=True)
     __table_args__ = (
         UniqueConstraint("device_uuid", name="uq_dispositivos_device_uuid"),
+        UniqueConstraint("id", "empresa_id", name="uq_dispositivos_id_empresa"),
         UniqueConstraint("id", "empresa_id", "usuario_id", name="uq_dispositivos_identidade"),
         ForeignKeyConstraint(
             ["usuario_id", "empresa_id"], ["usuarios.id", "usuarios.empresa_id"],
@@ -501,6 +509,46 @@ class Dispositivos(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.Model):
             name="vinculo_tipo_valido",
         ),
         Index("ix_dispositivos_empresa_tipo_ativo", "empresa_id", "tipo", "ativo"),
+    )
+
+
+class DispositivoUsuarios(EmpresaMixin, CriacaoMixin, db.Model):
+    """Autorizações individuais; um relógio pode ter vários usuários ativos."""
+    __tablename__ = "dispositivos_usuarios"
+    dispositivo_id = db.Column(UUID(as_uuid=True), primary_key=True)
+    empresa_id = db.Column(UUID(as_uuid=True), db.ForeignKey("empresas.id", ondelete="RESTRICT"), primary_key=True)
+    usuario_id = db.Column(UUID(as_uuid=True), primary_key=True)
+    ativo = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
+    autorizado_por_id = db.Column(UUID(as_uuid=True))
+    __table_args__ = (
+        ForeignKeyConstraint(["dispositivo_id", "empresa_id"], ["dispositivos.id", "dispositivos.empresa_id"],
+            name="fk_dispositivos_usuarios_dispositivo", ondelete="RESTRICT", onupdate="RESTRICT"),
+        ForeignKeyConstraint(["usuario_id", "empresa_id"], ["usuarios.id", "usuarios.empresa_id"],
+            name="fk_dispositivos_usuarios_usuario", ondelete="RESTRICT", onupdate="RESTRICT"),
+        ForeignKeyConstraint(["autorizado_por_id", "empresa_id"], ["usuarios.id", "usuarios.empresa_id"],
+            name="fk_dispositivos_usuarios_autor", ondelete="RESTRICT", onupdate="RESTRICT"),
+        Index("ix_dispositivos_usuarios_empresa_usuario", "empresa_id", "usuario_id", "ativo"),
+    )
+
+
+class DispositivoUsuarioSetores(EmpresaMixin, CriacaoMixin, db.Model):
+    """Escopos independentes de um funcionário no mesmo aparelho compartilhado."""
+    __tablename__ = "dispositivos_usuarios_setores"
+    dispositivo_id = db.Column(UUID(as_uuid=True), primary_key=True)
+    empresa_id = db.Column(UUID(as_uuid=True), db.ForeignKey("empresas.id", ondelete="RESTRICT"), primary_key=True)
+    usuario_id = db.Column(UUID(as_uuid=True), primary_key=True)
+    setor_id = db.Column(UUID(as_uuid=True), primary_key=True)
+    ativo = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
+    autorizado_por_id = db.Column(UUID(as_uuid=True))
+    __table_args__ = (
+        ForeignKeyConstraint(["dispositivo_id", "empresa_id", "usuario_id"],
+            ["dispositivos_usuarios.dispositivo_id", "dispositivos_usuarios.empresa_id", "dispositivos_usuarios.usuario_id"],
+            name="fk_dispositivos_escopos_vinculo", ondelete="RESTRICT", onupdate="RESTRICT"),
+        ForeignKeyConstraint(["setor_id", "empresa_id"], ["setores.id", "setores.empresa_id"],
+            name="fk_dispositivos_escopos_setor", ondelete="RESTRICT", onupdate="RESTRICT"),
+        ForeignKeyConstraint(["autorizado_por_id", "empresa_id"], ["usuarios.id", "usuarios.empresa_id"],
+            name="fk_dispositivos_escopos_autor", ondelete="RESTRICT", onupdate="RESTRICT"),
+        Index("ix_dispositivos_escopos_empresa_usuario", "empresa_id", "usuario_id", "ativo"),
     )
 
 
@@ -559,7 +607,7 @@ class RegistrosPonto(IdentificadorMixin, EmpresaMixin, db.Model):
         UniqueConstraint("empresa_id", "evento_cliente_id", name="uq_registros_evento_empresa"),
         ForeignKeyConstraint(
             ["dispositivo_registrado_id", "empresa_id", "usuario_id"],
-            ["dispositivos.id", "dispositivos.empresa_id", "dispositivos.usuario_id"],
+            ["dispositivos_usuarios.dispositivo_id", "dispositivos_usuarios.empresa_id", "dispositivos_usuarios.usuario_id"],
             name="fk_registros_dispositivo_identidade", ondelete="RESTRICT", onupdate="RESTRICT",
         ),
         ForeignKeyConstraint(
@@ -637,6 +685,8 @@ class JustificativasAjustes(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.M
     registro_ponto_id = db.Column(UUID(as_uuid=True))
     solicitado_por_id = db.Column(UUID(as_uuid=True), nullable=False)
     justificativa = db.Column(db.Text, nullable=False)
+    tipo_ocorrencia = db.Column(db.String(32), nullable=False,
+        default=TipoOcorrencia.AJUSTE.value, server_default=TipoOcorrencia.AJUSTE.value)
     tipo_proposto = db.Column(enum_column_type(TipoPonto, "tipo_ponto"), nullable=False)
     ocorrido_em_proposto = db.Column(db.DateTime(timezone=True), nullable=False)
     status = db.Column(
@@ -646,6 +696,7 @@ class JustificativasAjustes(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.M
     decidido_por_id = db.Column(UUID(as_uuid=True))
     decidido_em = db.Column(db.DateTime(timezone=True))
     observacao_decisao = db.Column(db.Text)
+    sequencia_decisao = db.Column(db.Integer)
 
     registro_ponto = db.relationship("RegistrosPonto", viewonly=True)
     usuario = db.relationship(
@@ -681,6 +732,10 @@ class JustificativasAjustes(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.M
             name="fk_ajustes_decisor_empresa", ondelete="RESTRICT", onupdate="RESTRICT",
         ),
         CheckConstraint("length(trim(justificativa)) > 0", name="justificativa_obrigatoria"),
+        CheckConstraint("tipo_ocorrencia IN ('AJUSTE', 'INVALIDACAO_GESTOR', 'APROVACAO_GESTOR', 'REAPROVACAO_RH')",
+            name="tipo_ocorrencia_valido"),
+        CheckConstraint("tipo_ocorrencia = 'AJUSTE' OR registro_ponto_id IS NOT NULL",
+            name="invalidacao_com_original"),
         CheckConstraint(
             "(status = 'Pendente' AND decidido_por_id IS NULL AND decidido_em IS NULL) "
             "OR (status IN ('Aprovado', 'Rejeitado') "
@@ -689,6 +744,11 @@ class JustificativasAjustes(IdentificadorMixin, EmpresaMixin, CriacaoMixin, db.M
         ),
         Index("ix_ajustes_empresa_status_criado", "empresa_id", "status", "criado_em"),
         Index("ix_ajustes_empresa_usuario", "empresa_id", "usuario_id"),
+        CheckConstraint("(tipo_ocorrencia = 'AJUSTE' AND sequencia_decisao IS NULL) OR "
+            "(tipo_ocorrencia != 'AJUSTE' AND sequencia_decisao IS NOT NULL AND sequencia_decisao > 0)",
+            name="sequencia_decisao_valida"),
+        Index("uq_ajustes_sequencia_decisao", "empresa_id", "registro_ponto_id", "sequencia_decisao",
+            unique=True, postgresql_where=db.text("sequencia_decisao IS NOT NULL")),
     )
 
 

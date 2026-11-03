@@ -9,10 +9,12 @@ X-Device-UUID: UUID_DO_APP_REGISTRADO
 
 `empresa_id` e usuário vêm do JWT, e o modo vem do dispositivo no banco. O token
 precisa conter `dispositivo_id` vinculado ao UUID do header. Para relógios, a
-conta deve ter papel `USUARIO_SETOR`, com `setor_id` autorizado no JWT. O tipo
-persistido é `RELOGIO`, representando o relógio de setor. A emissão de tokens
-para esse login continua sob responsabilidade do fluxo confiável de W07;
-o sync não cria aparelhos nem emite tokens.
+sessão deve conter `setor_id` autorizado no JWT. Funcionários com vínculo ativo
+ao relógio e alocação vigente no setor podem entrar com suas próprias contas;
+a compatibilidade com tokens confiáveis do papel `USUARIO_SETOR` é mantida.
+O tipo persistido é `RELOGIO`. O RH provisiona os vínculos pelo painel conforme
+[W07 — Autorização manual](W07-dispositivos-admin.md). O sync não cria aparelhos
+nem emite tokens, e cada funcionário envia pontos com seu próprio JWT.
 
 Exemplos completos, com identificadores fictícios:
 [Modo Pessoal](examples/w08-pessoal.json) e [Modo Relógio](examples/w08-relogio.json).
@@ -47,7 +49,14 @@ payload original, hashes ou snapshots de localização.
 
 ## DTO relógio
 
-`setor` corresponde exclusivamente ao vínculo do aparelho. `funcionarios`
+Um aparelho pode atender vários setores. `setores_disponiveis` contém `id` e
+`nome` dos setores autorizados para a conta e o aparelho, com alocação vigente.
+Sem query, usa o `setor_id` do JWT. Para trocar o contexto, envie
+`GET /api/v1/mobile/sync?setor_id=<UUID>`; a autorização é revalidada no banco.
+Um setor não autorizado retorna `403`, mesmo que pertença à mesma empresa.
+O app deve guardar o contexto escolhido e separar seu cache por setor.
+
+`setor` corresponde ao contexto escolhido e autorizado. `funcionarios`
 contém todos os funcionários ativos com alocação vigente nesse setor, inclusive
 os que ainda não possuem conta de acesso. Cada item contém suas alocações com
 `escala_id`. O catálogo `escalas` contém uma cópia de cada escala utilizada.
@@ -83,6 +92,6 @@ suas URLs e regras; o sync não habilita envio coletivo de pontos por relógios.
 
 A migration `0005` une as duas revisões anteriores (`0004` e `0004_w04_w07`),
 sem DDL nem alterações de dados próprias. Ela resolve a ambiguidade de `head` e
-permite instalar ambas as fundações. Nenhuma migration foi aplicada online durante
-esta implementação. Os testes verificam a carga por HTTP e Service, fuso, vigência,
+permite instalar ambas as fundações. O compartilhamento multissetor requer a
+migration `0010`. Os testes verificam a carga por HTTP e Service, fuso, vigência,
 isolamento, histórico limitado, relógio, revogação, cabeçalhos e consultas em lote.
