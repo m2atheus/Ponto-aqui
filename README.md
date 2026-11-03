@@ -15,7 +15,7 @@
     <a href="#validacao" title="Como validar o projeto; CI ainda não configurada">
       <img src="https://img.shields.io/badge/build-n%C3%A3o%20configurado-lightgrey" alt="Build: não configurado — consultar validação">
     </a>
-    <a href="#license" title="Situação da licença do projeto">
+    <a href="#licenca" title="Situação da licença do projeto">
       <img src="https://img.shields.io/badge/license-MIT%20(proposta)-lightgrey" alt="Licença MIT: proposta pendente de formalização">
     </a>
     <a href="https://docs.flutter.dev/" title="Documentação oficial do Flutter">
@@ -30,14 +30,14 @@
   </p>
 
   <p>
-    <a href="#installation">Começar agora</a> ·
-    <a href="#features">Regras de negócio</a> ·
+    <a href="#instalacao">Começar agora</a> ·
+    <a href="#regras-de-negocio">Regras de negócio</a> ·
     <a href="docs/PROMPT-MOBILE.md">Integração mobile</a>
   </p>
 
 </div>
 
-## The problem
+## O problema
 
 Uma jornada de trabalho não deveria se perder por falta de sinal. Ainda assim, equipes em campo enfrentam conexões instáveis, registros dispersos e processos manuais de fechamento.
 
@@ -45,7 +45,9 @@ Para o RH, conferir horários, investigar uma marcação suspeita e reconstruir 
 
 O Ponto Aqui enfrenta esses desafios: continuidade da operação offline, evidências de localização e foto, decisões auditáveis e isolamento dos dados de cada empresa.
 
-## This solution
+<a id="solucao"></a>
+
+## A solução
 
 O sistema conecta três frentes por uma API central. Web e mobile consomem a API; o acesso ao PostgreSQL e as decisões de negócio ficam no backend.
 
@@ -68,20 +70,22 @@ docs/         Contratos e guias técnicos
 run.py        Entrada da API em desenvolvimento
 ```
 
-## Table of Contents
+## Sumário
 
-- [The problem — O problema](#the-problem)
-- [This solution — A solução](#this-solution)
-- [Installation — Instalação](#installation)
+- [O problema](#o-problema)
+- [A solução](#solucao)
+- [Instalação](#instalacao)
   - [Pré-requisitos](#pré-requisitos)
-  - [Backend](#backend)
-  - [Web Admin](#web-admin)
-  - [Mobile](#mobile)
+  - [API Flask](#api-flask)
+  - [Painel administrativo](#painel-administrativo)
+  - [Aplicativo móvel](#aplicativo-movel)
   - [Validação e documentação](#validação-e-documentação)
-- [Features — Regras de negócio](#features)
-- [Contributors & License](#contributors-license)
+- [Funcionalidades e regras de negócio](#regras-de-negocio)
+- [Contribuidores e licença](#contribuidores-licenca)
 
-## Installation
+<a id="instalacao"></a>
+
+## Instalação
 
 ### Pré-requisitos
 
@@ -100,7 +104,7 @@ flutter doctor
 
 Os comandos principais abaixo usam **Windows/PowerShell**, sem exigir a ativação da `.venv`. Há uma alternativa Linux/macOS ao final da configuração do backend.
 
-### Backend
+### API Flask
 
 **1. Instale as dependências e prepare o ambiente local.**
 
@@ -179,7 +183,7 @@ Preencha o `.env` conforme o exemplo acima. Em seguida:
 
 </details>
 
-### Web Admin
+### Painel administrativo
 
 Em **outro terminal**, partindo da raiz do repositório:
 
@@ -199,7 +203,9 @@ flutter run -d chrome --web-port=3000 --dart-define=ENABLE_MOCK_AUTH=false --dar
 
 Inclua a origem do painel em `CORS_ORIGINS` e reinicie a API após alterar o `.env`. A demonstração visual pode ser habilitada com `ENABLE_MOCK_AUTH=true`; ela não substitui uma conta real para operações no banco.
 
-### Mobile
+<a id="aplicativo-movel"></a>
+
+### Aplicativo móvel
 
 Abra **a pasta do projeto mobile, no repositório separado**, e execute:
 
@@ -247,7 +253,9 @@ flutter test
 | Lotes offline e selfies | [W09 — API de ponto](docs/W09.md) |
 | Deploy com build local e Portainer | [Azure](docs/DEPLOY-AZURE.md) |
 
-## Features
+<a id="regras-de-negocio"></a>
+
+## Funcionalidades e regras de negócio
 
 | Regra | Comportamento |
 | --- | --- |
@@ -264,11 +272,11 @@ flutter test
 
 As regras ficam no backend: validações e controles visuais do Flutter ajudam o usuário, mas não substituem a autorização e a verificação no servidor.
 
-<a id="contributors-license"></a>
+<a id="contribuidores-licenca"></a>
 
-## Contributors & License
+## Contribuidores e licença
 
-### Contributors
+### Contribuidores
 
 Contribuições são bem-vindas: melhorias de acessibilidade, testes, documentação e relatos de problemas ajudam a evoluir o projeto.
 
@@ -276,7 +284,9 @@ Antes de enviar uma alteração, descreva o problema e o comportamento esperado,
 
 <!-- Adicione aqui os nomes e perfis dos contribuidores do projeto. -->
 
-### License
+<a id="licenca"></a>
+
+### Licença
 
 A licença ainda não foi formalizada neste repositório. **MIT é a proposta indicada pelo badge deste modelo**; sua adoção deve ser confirmada com a inclusão do arquivo `LICENSE` e a identificação dos titulares dos direitos autorais.
 
