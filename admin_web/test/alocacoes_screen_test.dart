@@ -74,6 +74,153 @@ Future<void> preencherAlocacao(
 }
 
 void main() {
+  for (final comEscala in [false, true]) {
+    for (final fim in ['', '   ']) {
+      testWidgets(
+        'fim vazio é nulo; escala=$comEscala; espaços=${fim.isNotEmpty}',
+        (tester) async {
+          final api = ManagementApiFake()..alocacoes.clear();
+          await mountAlocacoes(tester, api: api);
+          await tester.tap(find.byKey(const Key('nova-alocacao')));
+          await tester.pumpAndSettle();
+          await preencherAlocacao(tester, fim: fim);
+          if (comEscala) {
+            await tester.ensureVisible(
+              find.byKey(const Key('alocacao-escala')),
+            );
+            await tester.tap(find.byKey(const Key('alocacao-escala')));
+            await tester.pumpAndSettle();
+            await tester.tap(find.text('Comercial').last);
+            await tester.pumpAndSettle();
+          }
+          expect(find.text('Fim (opcional)'), findsOneWidget);
+          expect(
+            find.text(
+              'A data de fim é opcional. Se deixada em branco, a alocação terá vigência por tempo indeterminado.',
+            ),
+            findsOneWidget,
+          );
+          await tester.ensureVisible(
+            find.widgetWithText(FilledButton, 'Salvar'),
+          );
+          await tester.tap(find.widgetWithText(FilledButton, 'Salvar'));
+          await tester.pumpAndSettle();
+          final post = api.requests.singleWhere((r) => r.method == 'POST');
+          expect((post.data as Map).containsKey('data_fim'), isTrue);
+          expect(post.data['data_fim'], isNull);
+          expect(post.data['escala_id'], comEscala ? 'escala-1' : isNull);
+          expect(find.byType(AlertDialog), findsNothing);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
+  testWidgets('encerrar vínculo ainda exige data final', (tester) async {
+    final app = await mountAlocacoes(tester);
+    await tester.tap(find.byKey(const Key('encerrar-alocacao-alocacao-1')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('alocacao-data-fim')), '');
+    await tester.tap(find.text('Encerrar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Informe a data de fim.'), findsOneWidget);
+    expect(app.api.requests.where((r) => r.method == 'PUT'), isEmpty);
+  });
+
+  testWidgets(
+    'diálogo de encerramento tem só data fim, valida início e cabe em 320 pixels',
+    (tester) async {
+      final app = await mountAlocacoes(tester, size: const Size(320, 760));
+      final abrir = find.byKey(const Key('encerrar-alocacao-alocacao-1'));
+      await tester.ensureVisible(abrir);
+      await tester.pumpAndSettle();
+      await tester.tap(abrir);
+      await tester.pumpAndSettle();
+      final dialog = find.byType(AlertDialog);
+      expect(
+        find.descendant(of: dialog, matching: find.byType(TextFormField)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: dialog,
+          matching: find.byType(DropdownButtonFormField<String>),
+        ),
+        findsNothing,
+      );
+      await tester.enterText(
+        find.byKey(const Key('alocacao-data-fim')),
+        '30/09/2026',
+      );
+      await tester.ensureVisible(
+        find.byKey(const Key('encerrar-alocacao-confirmar')),
+      );
+      await tester.tap(find.byKey(const Key('encerrar-alocacao-confirmar')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('A data final não pode ser anterior à inicial.'),
+        findsOneWidget,
+      );
+      expect(app.api.requests.where((r) => r.method == 'PUT'), isEmpty);
+      await tester.enterText(
+        find.byKey(const Key('alocacao-data-fim')),
+        '01/10/2026',
+      );
+      await tester.ensureVisible(
+        find.byKey(const Key('encerrar-alocacao-confirmar')),
+      );
+      await tester.tap(find.byKey(const Key('encerrar-alocacao-confirmar')));
+      await tester.pumpAndSettle();
+      expect(app.api.requests.singleWhere((r) => r.method == 'PUT').data, {
+        'data_fim': '2026-10-01',
+      });
+      expect(app.api.alocacoes, hasLength(1));
+      expect(app.api.requests.where((r) => r.method == 'DELETE'), isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'encerramento em andamento bloqueia envio duplo sem mudar os outros campos',
+    (tester) async {
+      final app = await mountAlocacoes(tester);
+      final antes = Map<String, dynamic>.of(app.api.alocacao);
+      await tester.tap(find.byKey(const Key('encerrar-alocacao-alocacao-1')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('alocacao-data-fim')),
+        '31/10/2026',
+      );
+      app.api.writeGate = Completer<void>();
+      await tester.tap(find.byKey(const Key('encerrar-alocacao-confirmar')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const Key('alocacao-data-fim')))
+            .enabled,
+        isFalse,
+      );
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const Key('encerrar-alocacao-confirmar')),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(app.api.requests.where((r) => r.method == 'PUT'), hasLength(1));
+      app.api.writeGate!.complete();
+      await tester.pumpAndSettle();
+      final depois = Map<String, dynamic>.of(app.api.alocacao)
+        ..['data_fim'] = antes['data_fim'];
+      expect(depois, antes);
+      expect(app.api.alocacao['data_fim'], '2026-10-31');
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'lista nomes, cria e encerra com PUT preservando a linha e o Shell',
     (tester) async {
@@ -160,20 +307,14 @@ void main() {
     expect(find.text('Setor Inativo'), findsOneWidget);
     await tester.tap(find.byKey(const Key('nova-alocacao')));
     await tester.pumpAndSettle();
-    final funcionarios = tester.widget<DropdownButton<String>>(
-      find.descendant(
-        of: find.byKey(const Key('alocacao-funcionario')),
-        matching: find.byType(DropdownButton<String>),
-      ),
-    );
-    final setores = tester.widget<DropdownButton<String>>(
-      find.descendant(
-        of: find.byKey(const Key('alocacao-setor')),
-        matching: find.byType(DropdownButton<String>),
-      ),
-    );
-    expect(funcionarios.items!.map((e) => e.value), ['funcionario-1']);
-    expect(setores.items!.map((e) => e.value), ['setor-1']);
+    await tester.tap(find.byKey(const Key('alocacao-funcionario-input')));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(ListTile, 'Ana Silva — 001'), findsOneWidget);
+    expect(find.widgetWithText(ListTile, 'Beto Inativo — 002'), findsNothing);
+    await tester.tap(find.byKey(const Key('alocacao-setor-input')));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(ListTile, 'Sede'), findsOneWidget);
+    expect(find.widgetWithText(ListTile, 'Setor Inativo'), findsNothing);
   });
 
   testWidgets('sobreposição 409 mantém modal e dados com SnackBar vermelho', (
@@ -277,11 +418,11 @@ void main() {
     expect(find.text('Salvando...'), findsOneWidget);
     expect(
       tester
-          .widget<DropdownButtonFormField<String>>(
-            find.byKey(const Key('alocacao-funcionario')),
+          .widget<TextField>(
+            find.byKey(const Key('alocacao-funcionario-input')),
           )
-          .onChanged,
-      isNull,
+          .enabled,
+      isFalse,
     );
     expect(
       tester
@@ -328,18 +469,12 @@ void main() {
       api.setores.clear();
       await tester.tap(find.text('Tentar novamente'));
       await tester.pumpAndSettle();
-      expect(
-        find.textContaining(
-          'cadastre ao menos um funcionário ativo e um setor ativo',
-        ),
-        findsOneWidget,
-      );
-      expect(
-        tester
-            .widget<FilledButton>(find.byKey(const Key('nova-alocacao')))
-            .onPressed,
-        isNull,
-      );
+      await tester.tap(find.byKey(const Key('nova-alocacao')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('alocacao-setor-input')));
+      await tester.pumpAndSettle();
+      expect(find.text('Nenhum resultado encontrado.'), findsOneWidget);
+      expect(api.requests.where((r) => r.method == 'POST'), isEmpty);
     },
   );
 

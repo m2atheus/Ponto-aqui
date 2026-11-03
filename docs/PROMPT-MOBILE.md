@@ -148,7 +148,7 @@ Login atual:
 }
 ```
 
-`dispositivo_id` precisa corresponder a um aparelho previamente cadastrado, ativo e vinculado à conta/empresa. O AuthService atual não aceita novos campos como `device_uuid` ou `nome_dispositivo` nesse body.
+`dispositivo_id` precisa corresponder a um aparelho previamente cadastrado, ativo e vinculado à conta/empresa. Também é possível enviar `device_uuid` em seu lugar, com o UUID da instalação autorizado pelo RH. Se ambos forem enviados, precisam apontar para o mesmo aparelho. `nome_dispositivo` não é aceito no login, e um UUID desconhecido não é cadastrado automaticamente.
 
 Resposta de sucesso:
 
@@ -189,21 +189,23 @@ O `device_uuid` deve ser um UUID estável gerado para a instalação. Não exigi
 No banco:
 
 - `PESSOAL`: vinculado à conta do funcionário.
-- `RELOGIO`: vinculado ao setor.
+- `RELOGIO`: compartilhado, com autorizações individuais por usuário e setor.
 - UUID sozinho não autentica o usuário nem comprova fisicamente o aparelho.
 
 O sync confere que o `device_uuid` do header corresponde ao `dispositivo_id` autorizado no JWT.
 
-O Service `DeviceService.registrar_login_pessoal` já registra o novo aparelho e revoga outros pessoais ativos do mesmo usuário, mas **ainda não está integrado ao endpoint de login atual nem exposto por uma rota HTTP de provisionamento**.
+O RH já pode provisionar aparelhos em **Funcionários → Ações → Aparelhos e segurança** por `POST /api/v1/admin/funcionarios/<id>/dispositivos`. Essas rotas administrativas não devem ser consumidas pelo app do funcionário. O app deve exibir e permitir copiar seu `device_uuid` no rodapé do login.
 
-Para relógio, o sync exige papel `USUARIO_SETOR` e claim `setor_id`. **O login atual não implementa esse fluxo de emissão de token de setor.**
+O Service `DeviceService.registrar_login_pessoal` revoga os outros aparelhos pessoais ativos do mesmo usuário ao autorizar um novo. Para `RELOGIO`, o RH cria vínculos individuais em `dispositivos_usuarios`: vários funcionários alocados no setor podem usar o mesmo UUID, sem revogação cruzada. Revogar o vínculo de um funcionário não revoga os demais. Cada pessoa entra com sua conta e envia pontos com seu próprio JWT; o app não deve inventar permissão para marcar em nome de colegas. Consulte [o contrato W07](W07-dispositivos-admin.md).
 
-Antes de prometer primeiro acesso completo:
+Para relógio, o JWT emitido para o funcionário autorizado inclui `setor_id` e `setor_ids`, além de `dispositivo_id` e `device_uuid`. A migration `0010` permite o mesmo aparelho em vários setores via `dispositivos_usuarios_setores`. O login aceita `setor_id` opcional e retorna `setores_disponiveis` (`id`, `nome`). Para escolher outro contexto autorizado, chame `GET /api/v1/mobile/sync?setor_id=<UUID>` e use a alocação desse setor nas marcações. O sync revalida a autorização individual e a alocação vigente; separar o cache por empresa, usuário e setor. Tokens confiáveis legados do papel `USUARIO_SETOR` permanecem restritos ao setor original.
 
-1. Identifique como obter o ID cadastrado do dispositivo e como provisionar a instalação.
-2. Documente as alterações mínimas necessárias no backend.
-3. Se propondo integrar registro/revogação ao login, apresente um contrato explícito e preserve compatibilidade.
-4. Não liberar marcações com UUID inventado ou token fabricado para contornar a pendência.
+Fluxo de primeiro acesso:
+
+1. Gere e persista o UUID da instalação; mostre esse código no login.
+2. O funcionário informa o código ao RH, que autoriza o vínculo no painel.
+3. Faça login enviando `email`, `senha` e `device_uuid` (ou o `dispositivo_id` legado).
+4. Faça o sync com JWT e `X-Device-UUID`. Sem carga válida, preserve as evidências locais e informe a necessidade de autorização/conexão; não fabrique tokens ou permissões.
 
 A funcionalidade desejada de sair do modo relógio com senha do gestor requer autenticação no servidor. Não armazenar nem verificar localmente a senha do gestor. Essa integração deve ser especificada separadamente.
 
@@ -242,7 +244,8 @@ Escala:
 
 Modo relógio:
 
-- `setor`: vínculo do aparelho.
+- `setor`: contexto autorizado escolhido para esta carga.
+- `setores_disponiveis`: lista de setores autorizados (`id`, `nome`) para permitir a troca de contexto. Não usar um setor de outra conta nem reutilizar o cache de outro setor.
 - `funcionarios`: lista com dados básicos e alocações.
 - Cada alocação referencia `escala_id`, que pode ser nulo.
 - `escalas`: catálogo das escalas referenciadas.

@@ -237,7 +237,7 @@ def test_upgrade_preserves_existing_points_and_backfills_employees(policy, senha
     from conftest import MIGRATIONS
     from test_mobile_w09 import concurrent_app
     with concurrent_app(revision="0002") as application, application.app_context():
-        ids = {key: uuid.uuid4() for key in ("empresa", "usuario", "setor", "escala", "alocacao", "ponto", "evento", "admin", "conta_setor")}
+        ids = {key: uuid.uuid4() for key in ("empresa", "usuario", "setor", "escala", "alocacao", "ponto", "evento", "admin", "conta_setor", "aparelho")}
         with db.engine.begin() as connection:
             connection.execute(text("INSERT INTO empresas (id, razao_social, cnpj) VALUES (:empresa, 'Legada', '88888888888888')"), ids)
             connection.execute(text("""INSERT INTO usuarios (id, empresa_id, nome, email, senha_hash)
@@ -252,17 +252,23 @@ def test_upgrade_preserves_existing_points_and_backfills_employees(policy, senha
                 VALUES (:escala, :empresa, 'Comercial', 'Semanal', 2400, '{}')"""), ids)
             connection.execute(text("""INSERT INTO alocacoes (id, empresa_id, usuario_id, setor_id, escala_id, data_inicio)
                 VALUES (:alocacao, :empresa, :usuario, :setor, :escala, '2020-01-01')"""), ids)
+            connection.execute(text("""INSERT INTO dispositivos (id, empresa_id, usuario_id, nome)
+                VALUES (:aparelho, :empresa, :usuario, 'Aparelho legado')"""), ids)
             connection.execute(text("""INSERT INTO registros_ponto (id, empresa_id, usuario_id, setor_id, alocacao_id,
                 enviado_por_id, evento_cliente_id, payload_hash, tipo, origem, ocorrido_em, offset_original_minutos,
                 latitude, longitude, latitude_centro_validada, longitude_centro_validada, raio_validado_metros,
-                distancia_centro_metros, registrado_offline, desvio_relogio_segundos)
+                distancia_centro_metros, registrado_offline, desvio_relogio_segundos,
+                dispositivo_cliente_id, dispositivo_registrado_id)
                 VALUES (:ponto, :empresa, :usuario, :setor, :alocacao, :usuario, :evento, :hash,
-                    'Entrada', 'Mobile', '2020-01-02T08:00:00-03:00', -180, -8, -35, -8, -35, 100, 0, true, 15)"""),
+                    'Entrada', 'Mobile', '2020-01-02T08:00:00-03:00', -180, -8, -35, -8, -35, 100, 0, true, 15,
+                    :aparelho, :aparelho)"""),
                 {**ids, "hash": "a" * 64})
             before = dict(connection.execute(text("SELECT * FROM registros_ponto")).mappings().one())
         upgrade(directory=MIGRATIONS)
         with db.engine.connect() as connection:
             assert dict(connection.execute(text("SELECT * FROM registros_ponto")).mappings().one()) == before
+            assert connection.scalar(text("""SELECT count(*) FROM dispositivos_usuarios
+                WHERE dispositivo_id = :aparelho AND empresa_id = :empresa AND usuario_id = :usuario AND ativo"""), ids) == 1
             employee = connection.execute(text("SELECT * FROM funcionarios")).mappings().one()
             assert employee["usuario_id"] == ids["usuario"] and employee["matricula"] == "LEGACY-" + str(ids["usuario"])
             assert connection.scalar(text("SELECT funcionario_id FROM alocacoes")) == employee["id"]

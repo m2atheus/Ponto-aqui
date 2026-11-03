@@ -50,6 +50,20 @@ class SetorRepository {
         return List<Setor>.unmodifiable(items.map(_parse));
       });
 
+  Future<List<Setor>> buscar(String texto, {CancelToken? cancelToken}) =>
+      repositoryRequest(() async {
+        final response = await _dio.get<Object?>(
+          'setores/busca',
+          queryParameters: {'q': texto.trim()},
+          cancelToken: cancelToken,
+        );
+        final items = managementObject(response.data)['setores'];
+        if (items is! List || items.length > 20) {
+          throw const FormatException('Resultados de busca inválidos.');
+        }
+        return List<Setor>.unmodifiable(items.map(_parse));
+      });
+
   Future<Setor> criar(Setor dto) => repositoryRequest(() async {
     _validarEmpresa(dto);
     final response = await _dio.post<Object?>(

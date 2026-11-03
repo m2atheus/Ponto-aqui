@@ -11,6 +11,20 @@ from .rh_access import GestaoError, executar_rh
 
 
 class SetorService:
+    @staticmethod
+    def buscar(usuario_id, empresa_id, q=None, session=None):
+        def operacao(session, empresa):
+            if q is not None and (not isinstance(q, str) or len(q.strip()) > 150):
+                raise GestaoError("A busca deve conter até 150 caracteres.")
+            consulta = select(Setores).where(Setores.empresa_id == empresa, Setores.ativo.is_(True))
+            texto = (q or "").strip()
+            if texto:
+                padrao = "%" + texto.replace("/", "//").replace("%", "/%").replace("_", "/_") + "%"
+                consulta = consulta.where(Setores.nome.ilike(padrao, escape="/"))
+            rows = session.scalars(consulta.order_by(Setores.nome, Setores.id).limit(20)).all()
+            return {"setores": [SetorService._json(row) for row in rows]}, 200
+        return executar_rh(usuario_id, empresa_id, operacao, session)
+
     CAMPOS = {
         "nome", "endereco", "latitude", "longitude", "raio_metros",
         "exige_selfie", "acao_fora_perimetro", "ignorar_localizacao",

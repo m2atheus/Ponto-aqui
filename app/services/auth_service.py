@@ -9,7 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app import db
-from app.models import Dispositivos, Empresas, PapelUsuario, Usuarios
+from app.models import Dispositivos, Empresas, PapelUsuario, TipoDispositivo, Usuarios
 
 
 # Executa uma verificação de senha também quando o identificador não existe.
@@ -49,8 +49,10 @@ class AuthService:
 
     @staticmethod
     def login(dados, session=None):
+        from .device_service import DeviceService
+        from .rh_access import GestaoError
         session = session if session is not None else db.session
-        if not isinstance(dados, dict) or dados.keys() - {"email", "senha", "dispositivo_id"}:
+        if not isinstance(dados, dict) or dados.keys() - {"email", "senha", "dispositivo_id", "device_uuid", "setor_id"}:
             return _LOGIN_INVALIDO, 401
         email, senha = dados.get("email"), dados.get("senha")
         if (not isinstance(email, str) or not email.strip() or len(email.strip()) > 254
@@ -68,22 +70,52 @@ class AuthService:
                 return _LOGIN_INVALIDO, 401
             perfil = AuthService._usuario_json(usuario)
             claims = {"empresa_id": perfil["empresa_id"], "role": perfil["papel"]}
+            setores_disponiveis = None
             # Claim de aparelho só é emitida depois da conferência no banco.
-            if "dispositivo_id" in dados:
+            if "dispositivo_id" in dados or "device_uuid" in dados:
                 try:
-                    dispositivo_id = uuid.UUID(str(dados["dispositivo_id"]))
+                    dispositivo_id = uuid.UUID(str(dados["dispositivo_id"])) if "dispositivo_id" in dados else None
+                    codigo = uuid.UUID(str(dados["device_uuid"])) if "device_uuid" in dados else None
                 except (ValueError, TypeError, AttributeError):
                     return _LOGIN_INVALIDO, 401
-                device = session.scalar(select(Dispositivos.id).where(
-                    Dispositivos.id == dispositivo_id,
+                consulta = select(Dispositivos).where(
                     Dispositivos.empresa_id == usuario.empresa_id,
-                    Dispositivos.usuario_id == usuario.id, Dispositivos.ativo.is_(True),
-                ))
-                if device is None:
+                    Dispositivos.ativo.is_(True),
+                )
+                if dispositivo_id is not None:
+                    consulta = consulta.where(Dispositivos.id == dispositivo_id)
+                if codigo is not None:
+                    consulta = consulta.where(Dispositivos.device_uuid == codigo)
+                device = session.scalar(consulta)
+                if device is None or not DeviceService.pode_usar(session, usuario, device):
                     return _LOGIN_INVALIDO, 401
-                claims["dispositivo_id"] = str(device)
-            token = create_access_token(identity=str(usuario.id), additional_claims=claims)
-            return {"access_token": token, "token_type": "Bearer", "usuario": perfil}, 200
+                claims.update(dispositivo_id=str(device.id), device_uuid=str(device.device_uuid))
+                if device.tipo == TipoDispositivo.RELOGIO:
+                    setores = DeviceService.setores_autorizados(session, usuario.empresa_id, usuario.id, device.id)
+                    ids = {s.id for s in setores}
+                    try:
+                        escolhido = uuid.UUID(str(dados["setor_id"])) if dados.get("setor_id") is not None else (
+                            device.setor_id if device.setor_id in ids else setores[0].id)
+                    except (ValueError, TypeError, AttributeError, IndexError):
+                        return _LOGIN_INVALIDO, 401
+                    if escolhido not in ids:
+                        return _LOGIN_INVALIDO, 401
+                    claims["setor_id"] = str(escolhido)
+                    claims["setor_ids"] = [str(s.id) for s in setores]
+                    setores_disponiveis = [{"id": str(s.id), "nome": s.nome} for s in setores]
+                elif dados.get("setor_id") is not None:
+                    return _LOGIN_INVALIDO, 401
+                device.ultimo_acesso_em = db.func.clock_timestamp()
+                subject = str(usuario.id)
+                session.commit()
+            else:
+                subject = str(usuario.id)
+            token = create_access_token(identity=subject, additional_claims=claims)
+            return {"access_token": token, "token_type": "Bearer", "usuario": perfil,
+                **({"setores_disponiveis": setores_disponiveis} if setores_disponiveis is not None else {})}, 200
+        except GestaoError as error:
+            session.rollback()
+            return {"erro": {"codigo": error.codigo, "mensagem": error.mensagem}}, error.status
         except SQLAlchemyError:
             session.rollback()
             current_app.logger.error("Falha de banco na autenticação.")

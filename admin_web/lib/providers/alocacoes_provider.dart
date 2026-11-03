@@ -8,6 +8,7 @@ import '../models/setor.dart';
 import '../models/escala.dart';
 import '../repositories/repository_failure.dart';
 import '../repositories/setor_repository.dart';
+import '../repositories/alocacao_repository.dart';
 import 'api_providers.dart';
 import 'auth_provider.dart';
 import 'silent_refresh.dart';
@@ -69,8 +70,6 @@ class AlocacoesController extends AsyncNotifier<AlocacoesData>
     final cancel = CancelToken();
     ref.onDispose(() => cancel.cancel('Sessão ou consulta encerrada.'));
     ref.watch(alocacaoRepositoryProvider);
-    ref.watch(funcionarioRepositoryProvider);
-    ref.watch(setorRepositoryProvider);
     ref.watch(escalaRepositoryProvider);
     return loadForPolling(cancel);
   }
@@ -79,27 +78,37 @@ class AlocacoesController extends AsyncNotifier<AlocacoesData>
   Future<AlocacoesData> loadForPolling(CancelToken cancel) async {
     _sessaoRh(ref.read(authProvider).asData?.value);
     final alocacoes = ref.read(alocacaoRepositoryProvider);
-    final funcionarios = ref.read(funcionarioRepositoryProvider);
-    final setores = ref.read(setorRepositoryProvider);
     final escalas = ref.read(escalaRepositoryProvider);
     // Consultas independentes; aguarda todas, inclusive em falha, antes de
     // liberar uma nova tentativa com dados consistentes da mesma sessão.
     final results = await Future.wait<Object>([
-      alocacoes.listar(cancelToken: cancel),
-      funcionarios.listar(cancelToken: cancel),
-      setores.listar(cancelToken: cancel),
+      alocacoes.listarComReferencias(cancelToken: cancel),
       escalas.listar(cancelToken: cancel),
     ]);
     return AlocacoesData(
-      alocacoes: results[0] as List<Alocacao>,
-      funcionarios: results[1] as List<Funcionario>,
-      setores: results[2] as List<Setor>,
-      escalas: results[3] as List<Escala>,
+      alocacoes: (results[0] as AlocacoesResumo).alocacoes,
+      funcionarios: (results[0] as AlocacoesResumo).funcionarios,
+      setores: (results[0] as AlocacoesResumo).setores,
+      escalas: results[1] as List<Escala>,
     );
   }
 
-  Future<void> salvar(Alocacao dto) async {
+  Future<void> salvar(
+    Alocacao dto, {
+    Funcionario? funcionario,
+    Setor? setor,
+  }) async {
     final session = _sessaoRh(ref.read(authProvider).asData?.value);
+    if ((funcionario != null &&
+            (funcionario.id != dto.funcionarioId ||
+                funcionario.empresaId != session.user.companyId)) ||
+        (setor != null &&
+            (setor.id != dto.setorId ||
+                setor.empresaId != session.user.companyId))) {
+      throw const RepositoryFailure(
+        'Seleção incompatível com a empresa da sessão.',
+      );
+    }
     final previous = state.asData?.value;
     if (previous == null) {
       throw const RepositoryFailure('Aguarde o carregamento das alocações.');
@@ -107,7 +116,14 @@ class AlocacoesController extends AsyncNotifier<AlocacoesData>
     final repository = ref.read(alocacaoRepositoryProvider);
     final saved = dto.id.isEmpty
         ? await repository.criar(dto)
-        : await repository.atualizar(dto);
+        : await repository.encerrarAlocacao(
+            dto,
+            dataFim:
+                dto.dataFim ??
+                (throw const RepositoryFailure(
+                  'Informe a data de encerramento.',
+                )),
+          );
     if (!ref.mounted) {
       throw const RepositoryFailure('A sessão foi alterada. Entre novamente.');
     }
@@ -134,11 +150,47 @@ class AlocacoesController extends AsyncNotifier<AlocacoesData>
     state = AsyncData(
       AlocacoesData(
         alocacoes: rows,
-        funcionarios: latest.funcionarios,
-        setores: latest.setores,
+        funcionarios: [
+          ...latest.funcionarios,
+          if (funcionario != null &&
+              !latest.funcionarios.any((f) => f.id == funcionario.id))
+            funcionario,
+        ],
+        setores: [
+          ...latest.setores,
+          if (setor != null && !latest.setores.any((s) => s.id == setor.id))
+            setor,
+        ],
         escalas: latest.escalas,
       ),
     );
     ref.invalidate(w06Provider);
+  }
+
+  Future<void> encerrar(Alocacao anterior, String dataFim) async {
+    final atual = state.asData?.value.alocacoes
+        .where((a) => a.id == anterior.id)
+        .firstOrNull;
+    if (atual == null ||
+        atual.dataFim != null ||
+        atual.funcionarioId != anterior.funcionarioId ||
+        atual.setorId != anterior.setorId ||
+        atual.escalaId != anterior.escalaId ||
+        atual.dataInicio != anterior.dataInicio) {
+      throw const RepositoryFailure(
+        'A alocação mudou ou já possui fim definido. Consulte a lista novamente.',
+      );
+    }
+    await salvar(
+      Alocacao(
+        id: atual.id,
+        funcionarioId: atual.funcionarioId,
+        setorId: atual.setorId,
+        dataInicio: atual.dataInicio,
+        dataFim: dataFim,
+        empresaId: atual.empresaId,
+        escalaId: atual.escalaId,
+      ),
+    );
   }
 }

@@ -85,11 +85,10 @@ Future<void> novoAfastamento(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(const Key('novo-afastamento')));
   await tester.pumpAndSettle();
-  await escolher(
-    tester,
-    const Key('afastamento-funcionario'),
-    'Ana Silva · 001',
-  );
+  await tester.tap(find.byKey(const Key('funcionario-busca-input')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Ana Silva · 001').last);
+  await tester.pumpAndSettle();
   await data(tester, 'w06-inicio', '15/10/2026');
   await data(tester, 'w06-fim', '16/10/2026');
 }
@@ -273,6 +272,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Fim: 10/10/2026'), findsOneWidget);
     expect(find.text('Início: 11/10/2026'), findsOneWidget);
+    expect(find.text('Aparelhos / Segurança'), findsNothing);
+    expect(
+      api.requests.where((r) => r.uri.path.contains('/dispositivos')),
+      isEmpty,
+    );
     expect(api.requests.where((r) => r.method != 'GET'), isEmpty);
   });
   testWidgets(
@@ -285,8 +289,9 @@ void main() {
       final day = table.rows.singleWhere(
         (r) => r.key == const ValueKey('espelho-2026-10-05'),
       );
-      expect((day.cells[5].child as Text).data, '08:00');
-      expect((day.cells[6].child as Text).data, '00:00 / 00:00');
+      expect((day.cells[5].child as Text).data, '00:00');
+      expect((day.cells[6].child as Text).data, '08:00');
+      expect((day.cells[7].child as Text).data, '00:00 / 00:00');
       expect(api.requests.last.uri.path, endsWith('/relatorios/espelho'));
       expect(
         api.requests.last.queryParameters['funcionario_id'],

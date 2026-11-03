@@ -163,6 +163,11 @@ class ManagementApiFake implements HttpClientAdapter {
           return jsonResponse({
             'funcionarios': funcionarios
                 .where(
+                  (f) =>
+                      options.queryParameters['ativo'] != 'true' ||
+                      f['ativo'] == true,
+                )
+                .where(
                   (f) => '${f['nome']} ${f['matricula']}'
                       .toLowerCase()
                       .contains(q),
@@ -190,6 +195,19 @@ class ManagementApiFake implements HttpClientAdapter {
       return jsonResponse({'funcionario': row});
     }
     if (options.uri.path.contains('/setores')) {
+      if (options.method == 'GET' && options.uri.path.endsWith('/busca')) {
+        final q = (options.queryParameters['q'] as String).toLowerCase();
+        return jsonResponse({
+          'setores': setores
+              .where(
+                (s) =>
+                    s['ativo'] == true &&
+                    (s['nome'] as String).toLowerCase().contains(q),
+              )
+              .take(20)
+              .toList(),
+        });
+      }
       if (options.method == 'GET') {
         return jsonResponse({'setores': setores});
       }
@@ -216,7 +234,15 @@ class ManagementApiFake implements HttpClientAdapter {
       return jsonResponse({'setor': row});
     }
     if (options.method == 'GET') {
-      return jsonResponse({'alocacoes': alocacoes});
+      return jsonResponse({
+        'alocacoes': alocacoes,
+        'funcionarios': funcionarios
+            .where((f) => alocacoes.any((a) => a['funcionario_id'] == f['id']))
+            .toList(),
+        'setores': setores
+            .where((s) => alocacoes.any((a) => a['setor_id'] == s['id']))
+            .toList(),
+      });
     }
     final values = Map<String, dynamic>.from(options.data as Map);
     if (options.method == 'POST') {

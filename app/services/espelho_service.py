@@ -13,10 +13,11 @@ from sqlalchemy import or_, select
 
 from app.models import (
     Afastamentos, Alocacoes, Empresas, Escalas, Feriados, JustificativasAjustes,
-    RegistrosPonto, Setores, SituacaoPonto, StatusAjuste, TipoAfastamento, TipoPonto,
+    PoliticaLocalizacao, RegistrosPonto, SelfiesPonto, Setores, SituacaoPonto, StatusAjuste, TipoAfastamento, TipoPonto,
 )
 from .check_schedule_conflict_service import CheckScheduleConflictService, ScheduleValidationError
-from .rh_access import GestaoError, executar_rh
+from .rh_access import GestaoError, executar_empresa
+from .espelho_ajustes import auditoria, projetar_decisoes
 from .w06_validation import funcionario
 
 
@@ -73,7 +74,7 @@ class EspelhoService:
                 raise GestaoError("Informe ano e mês válidos.") from None
             return EspelhoService.gerar_mensal(usuario_id, empresa, None, ano, mes,
                 funcionario_id=filtros.get("funcionario_id"), session=session)
-        return executar_rh(usuario_id, empresa_id, operacao, session)
+        return executar_empresa(usuario_id, empresa_id, operacao, session)
 
     @staticmethod
     def _periodo(ano, mes):
@@ -143,8 +144,6 @@ class EspelhoService:
             except (ZoneInfoNotFoundError, ValueError):
                 raise GestaoError("Fuso da empresa indisponível.", 503, "FUSO_INVALIDO") from None
             agora = _agora_utc()
-            utc_inicio = datetime.combine(inicio, time.min, zona).astimezone(timezone.utc)
-            utc_fim = datetime.combine(proximo, time.min, zona).astimezone(timezone.utc)
             # Busca a véspera: um plantão do mês anterior pode ocupar o primeiro dia.
             margem_inicio = inicio - timedelta(days=1)
             janela_inicio = datetime.combine(margem_inicio, time.min, zona).astimezone(timezone.utc)
@@ -164,6 +163,9 @@ class EspelhoService:
                 Afastamentos.funcionario_id == alvo.id, Afastamentos.data_inicio <= fim,
                 Afastamentos.data_fim >= inicio).order_by(Afastamentos.data_inicio, Afastamentos.id)).all()
             pontos = []
+            fotos = {}
+            invalidacoes = {}
+            aprovacoes, correcoes, manuais, ajustes = {}, {}, [], []
             avisos = defaultdict(set)
             if alvo.usuario_id is not None:
                 pontos = session.scalars(select(RegistrosPonto).where(RegistrosPonto.empresa_id == empresa,
@@ -171,19 +173,38 @@ class EspelhoService:
                     RegistrosPonto.ocorrido_em >= janela_inicio,
                     RegistrosPonto.ocorrido_em < janela_fim
                 ).order_by(RegistrosPonto.ocorrido_em, RegistrosPonto.recebido_em, RegistrosPonto.id)).all()
-                # A base não aplica ajustes W10 silenciosamente: exige revisão desses dias.
                 ajustes = session.scalars(select(JustificativasAjustes).where(
                     JustificativasAjustes.empresa_id == empresa, JustificativasAjustes.usuario_id == alvo.usuario_id,
                     JustificativasAjustes.status != StatusAjuste.REJEITADO,
-                    or_(JustificativasAjustes.ocorrido_em_proposto.between(utc_inicio, utc_fim),
+                    or_((JustificativasAjustes.ocorrido_em_proposto >= janela_inicio)
+                        & (JustificativasAjustes.ocorrido_em_proposto < janela_fim),
                         JustificativasAjustes.registro_ponto_id.in_([p.id for p in pontos])))).all()
-                pontos_por_id = {p.id: p for p in pontos}
-                for ajuste in ajustes:
-                    avisos[ajuste.ocorrido_em_proposto.astimezone(zona).date()].add("AJUSTE_W10_REQUER_APURACAO")
-                    original = pontos_por_id.get(ajuste.registro_ponto_id)
-                    if original:
-                        avisos[original.ocorrido_em.astimezone(zona).date()].add("AJUSTE_W10_REQUER_APURACAO")
-            trabalho, presenca = EspelhoService._pares(pontos, zona, avisos)
+                # Uma correção pode trazer ao mês uma marcação de outro período.
+                referencias = {a.registro_ponto_id for a in ajustes if a.registro_ponto_id is not None}
+                if referencias:
+                    complementares = session.scalars(select(JustificativasAjustes).where(
+                        JustificativasAjustes.empresa_id == empresa, JustificativasAjustes.usuario_id == alvo.usuario_id,
+                        JustificativasAjustes.registro_ponto_id.in_(referencias),
+                        JustificativasAjustes.status != StatusAjuste.REJEITADO)).all()
+                    ajustes = list({a.id: a for a in [*ajustes, *complementares]}.values())
+                    faltantes = referencias - {p.id for p in pontos}
+                    if faltantes:
+                        pontos.extend(session.scalars(select(RegistrosPonto).where(
+                            RegistrosPonto.empresa_id == empresa, RegistrosPonto.usuario_id == alvo.usuario_id,
+                            RegistrosPonto.id.in_(faltantes))).all())
+                # Apenas metadados, incluindo originais corrigidos de outro mês.
+                if pontos:
+                    fotos = {foto.evento_cliente_id: foto.criado_em for foto in session.execute(
+                        select(SelfiesPonto.evento_cliente_id, SelfiesPonto.criado_em).where(
+                            SelfiesPonto.empresa_id == empresa,
+                            SelfiesPonto.usuario_id == alvo.usuario_id,
+                            SelfiesPonto.evento_cliente_id.in_([p.evento_cliente_id for p in pontos]),
+                        )).all()}
+            efetivos, invalidacoes, aprovacoes, correcoes, manuais, decisoes = projetar_decisoes(pontos, ajustes, linhas, zona, avisos)
+            for ponto in efetivos:
+                if ponto.ocorrido_em > agora:
+                    avisos[ponto.ocorrido_em.astimezone(zona).date()].add("MARCACAO_FUTURA")
+            trabalho, presenca = EspelhoService._pares(efetivos, zona, avisos)
             ocupados = sorted(i for v in trabalho.values() for i in v)
             limite_anterior = None
             for a, b in ocupados:
@@ -283,10 +304,14 @@ class EspelhoService:
                     status = "ABONO_PARCIAL" if abonados else "TRABALHADO"
                 else:
                     status = "FOLGA" if setores_vigentes else "SEM_ALOCACAO"
-                trabalhados = _cobertura(trabalho_total, a, b)
+                trabalhados = _cobertura(trabalho_total, a, min(b, agora)) if a < agora else Fraction()
                 obrigatorios = previstos - abonados
+                # Excedente diário preliminar; não calcula adicionais ou banco de horas.
+                extras = max(Fraction(), trabalhados - obrigatorios) if not avisos[dia] and not em_aberto else Fraction()
+                if extras and status in {"FOLGA", "SEM_ALOCACAO"}:
+                    status = "TRABALHADO"
                 medidas = {"previstos": previstos, "abonados": abonados, "exigiveis": obrigatorios,
-                    "trabalhados": trabalhados, "faltas": faltas, "atrasos": atrasos}
+                    "trabalhados": trabalhados, "faltas": faltas, "atrasos": atrasos, "extras": extras}
                 for campo, valor in medidas.items():
                     totais[campo] += valor
                 dias.append({"data": dia.isoformat(), "status": status,
@@ -299,12 +324,35 @@ class EspelhoService:
                     "pendencias": sorted(avisos[dia]),
                     "marcacoes": [{"id": str(p.id), "alocacao_id": str(p.alocacao_id),
                     "tipo": TipoPonto(p.tipo).value, "situacao": SituacaoPonto(p.situacao).value,
+                        "invalidado": p.id in invalidacoes,
+                        "invalidacao": invalidacoes.get(p.id),
+                        "origem": "REGISTRO",
+                        "motivos": p.motivos,
+                        "aprovado_gestor": p.id in aprovacoes,
+                        "aprovacao": aprovacoes.get(p.id),
+                        "reaprovado_rh": aprovacoes.get(p.id, {}).get("tipo_ocorrencia") == "REAPROVACAO_RH",
+                        "historico_decisoes": decisoes.get(p.id, []),
+                        "correcao": auditoria(correcoes[p.id]) if p.id in correcoes else None,
+                        "tipo_efetivo": TipoPonto(correcoes[p.id].tipo_proposto).value if p.id in correcoes else TipoPonto(p.tipo).value,
+                        "ocorrido_em_efetivo": correcoes[p.id].ocorrido_em_proposto.astimezone(zona).isoformat() if p.id in correcoes else p.ocorrido_em.astimezone(zona).isoformat(),
+                        "foto_url": f"/api/v1/admin/pontos/{p.id}/selfie" if p.evento_cliente_id in fotos else None,
+                        "foto_recebida_em": fotos[p.evento_cliente_id].astimezone(zona).isoformat()
+                            if p.evento_cliente_id in fotos else None,
+                        "geofence": {"raio_metros": float(p.raio_validado_metros),
+                            "distancia_metros": float(p.distancia_centro_metros) if p.distancia_centro_metros is not None else None,
+                            "politica": PoliticaLocalizacao(p.politica_localizacao_validada).value},
                         "ocorrido_em": p.ocorrido_em.astimezone(zona).isoformat()} for p in pontos
-                        if p.ocorrido_em.astimezone(zona).date() == dia]})
+                        if (correcoes[p.id].ocorrido_em_proposto if p.id in correcoes else p.ocorrido_em).astimezone(zona).date() == dia]
+                        + [{"id": str(m.id), "origem": "MANUAL_RH", "tipo": TipoPonto(m.tipo_proposto).value,
+                            "situacao": SituacaoPonto.ACEITA.value, "invalidado": False,
+                            "aprovado_gestor": True, "aprovacao": auditoria(m),
+                            "ocorrido_em": m.ocorrido_em_proposto.astimezone(zona).isoformat(),
+                            "foto_url": None, "foto_recebida_em": None, "geofence": None, "motivos": []}
+                           for m in manuais if m.ocorrido_em_proposto.astimezone(zona).date() == dia]})
             return {"espelho": {"empresa_id": str(empresa), "ano": ano, "mes": mes,
                 "fuso_horario": zona.key, "apuracao_definitiva": False,
                 "funcionario": {"id": str(alvo.id), "usuario_id": str(alvo.usuario_id) if alvo.usuario_id else None,
                     "nome": alvo.nome, "matricula": alvo.matricula}, "alocacoes_historicas": historico,
                 "dias": dias, "totais": {"minutos_" + campo: _minutos(valor) for campo, valor in totais.items()},
                 "tem_pendencias": any(d["pendencias"] for d in dias)}}, 200
-        return executar_rh(usuario_id, empresa_id, operacao, session)
+        return executar_empresa(usuario_id, empresa_id, operacao, session)

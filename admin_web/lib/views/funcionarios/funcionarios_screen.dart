@@ -13,6 +13,7 @@ import '../modules/module_placeholder_view.dart';
 import '../widgets/status_badge.dart';
 import '../widgets/responsive_table_container.dart';
 import 'vincular_acesso_dialog.dart';
+import 'dispositivos_funcionario_section.dart';
 
 class FuncionariosScreen extends ConsumerStatefulWidget {
   const FuncionariosScreen({super.key});
@@ -44,6 +45,28 @@ class _FuncionariosScreenState extends ConsumerState<FuncionariosScreen>
 
   bool _mesmaSessao(String token) =>
       mounted && ref.read(authProvider).asData?.value?.accessToken == token;
+
+  Future<void> _aparelhos(Funcionario funcionario) async {
+    final session = ref.read(authProvider).asData?.value;
+    if (_ocupado ||
+        session == null ||
+        session.isMock ||
+        session.user.role != UserRole.rh ||
+        session.user.companyId != funcionario.empresaId ||
+        !session.expiresAt.isAfter(DateTime.now())) {
+      return;
+    }
+    setState(() => _dialogAberto = true);
+    try {
+      await showDialog<void>(
+        context: context,
+        useRootNavigator: false,
+        builder: (_) => DispositivosFuncionarioDialog(funcionario: funcionario),
+      );
+    } finally {
+      if (mounted) setState(() => _dialogAberto = false);
+    }
+  }
 
   Future<void> _formulario([Funcionario? funcionario]) async {
     final session = ref.read(authProvider).asData?.value;
@@ -324,6 +347,16 @@ class _FuncionariosScreenState extends ConsumerState<FuncionariosScreen>
                                           ? Icons.verified_user_outlined
                                           : Icons.key_outlined,
                                     ),
+                                  ),
+                                  IconButton(
+                                    key: Key(
+                                      'aparelhos-funcionario-${funcionario.id}',
+                                    ),
+                                    tooltip: 'Aparelhos e segurança',
+                                    onPressed: podeGravar
+                                        ? () => _aparelhos(funcionario)
+                                        : null,
+                                    icon: const Icon(Icons.devices_outlined),
                                   ),
                                   IconButton(
                                     key: Key(

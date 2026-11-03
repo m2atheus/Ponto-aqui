@@ -44,6 +44,20 @@ def _data(valor):
 
 class CheckScheduleConflictService:
     MAX_DIAS_PROJECAO = 3660
+    HORIZONTE_INDETERMINADO_ANOS = 10
+
+    @staticmethod
+    def fim_horizonte_indeterminado(inicio):
+        """Limita somente a projeção; nunca define o fim da alocação."""
+        inicio = _data(inicio)
+        ano = inicio.year + CheckScheduleConflictService.HORIZONTE_INDETERMINADO_ANOS
+        if ano > date.max.year:
+            raise ScheduleValidationError("PERIODO_INVALIDO", "Início fora dos limites de projeção.")
+        try:
+            return inicio.replace(year=ano)
+        except ValueError:
+            # 29 de fevereiro termina em 28/02 se o ano de destino não for bissexto.
+            return inicio.replace(year=ano, day=28)
 
     @staticmethod
     def intervalos_sobrepostos(start_a, end_a, start_b, end_b):
@@ -142,10 +156,20 @@ class CheckScheduleConflictService:
         return intervalos
 
     @staticmethod
-    def validar_alocacao(empresa_id, usuario_id, escala_id, data_inicio, data_fim, *, session=None):
+    def validar_alocacao_funcionario(empresa_id, funcionario_id, escala_id, data_inicio, data_fim, *, session=None):
+        """Valida a jornada pelo cadastro de RH, mesmo antes de gerar acesso ao app."""
+        return CheckScheduleConflictService.validar_alocacao(
+            empresa_id, None, escala_id, data_inicio, data_fim,
+            session=session, funcionario_id=funcionario_id,
+        )
+
+    @staticmethod
+    def validar_alocacao(empresa_id, usuario_id, escala_id, data_inicio, data_fim, *, session=None,
+                         funcionario_id=None):
         """Retorna (JSON, status), sem inserir, encerrar alocações ou fazer commit.
 
-        Exige período finito; datas de vigência são inclusivas. Em sucesso, mantém
+        Datas de vigência são inclusivas. Sem fim, valida 10 anos a partir do
+        início e informa o horizonte; o vínculo continua indeterminado. Em sucesso, mantém
         lock do funcionário até o caller inserir a alocação e confirmar a MESMA
         transação. Todo futuro cadastro deve usar esse protocolo para evitar
         duas validações simultâneas aprovarem escalas conflitantes. O caller deve
@@ -153,27 +177,40 @@ class CheckScheduleConflictService:
         """
         session = session if session is not None else db.session
         try:
-            empresa_id, usuario_id, escala_id = map(_uuid, (empresa_id, usuario_id, escala_id))
-            if data_fim is None:
-                raise ScheduleValidationError("PERIODO_FINITO_OBRIGATORIO", "A validação exige data_fim explícita.")
-            inicio, fim = _data(data_inicio), _data(data_fim)
+            empresa_id, escala_id = map(_uuid, (empresa_id, escala_id))
+            por_funcionario = funcionario_id is not None
+            if por_funcionario:
+                funcionario_id = _uuid(funcionario_id)
+                if usuario_id is not None:
+                    raise ScheduleValidationError("IDENTIFICADOR_INVALIDO", "Informe funcionário ou usuário, não ambos.")
+            else:
+                usuario_id = _uuid(usuario_id)
+            inicio = _data(data_inicio)
+            indeterminada = data_fim is None
+            fim = (CheckScheduleConflictService.fim_horizonte_indeterminado(inicio)
+                   if indeterminada else _data(data_fim))
             if fim < inicio or (fim - inicio).days + 1 > CheckScheduleConflictService.MAX_DIAS_PROJECAO:
                 raise ScheduleValidationError("PERIODO_INVALIDO", "Período deve conter entre 1 e 3660 dias.")
             if inicio < date.min + timedelta(days=2) or fim > date.max - timedelta(days=2):
                 raise ScheduleValidationError("PERIODO_INVALIDO", "Período fora dos limites de projeção.")
             empresa = session.scalar(select(Empresas).where(Empresas.id == empresa_id, Empresas.ativo.is_(True)))
-            usuario = session.scalar(select(Usuarios).where(
-                Usuarios.id == usuario_id, Usuarios.empresa_id == empresa_id, Usuarios.ativo.is_(True),
-            ).with_for_update())
+            usuario = None
+            if not por_funcionario:
+                usuario = session.scalar(select(Usuarios).where(
+                    Usuarios.id == usuario_id, Usuarios.empresa_id == empresa_id, Usuarios.ativo.is_(True),
+                ).with_for_update())
             funcionario = session.scalar(select(Funcionarios).where(
-                Funcionarios.usuario_id == usuario_id, Funcionarios.empresa_id == empresa_id,
+                (Funcionarios.id == funcionario_id if por_funcionario else Funcionarios.usuario_id == usuario_id),
+                Funcionarios.empresa_id == empresa_id,
                 Funcionarios.ativo.is_(True),
             ).with_for_update())
             escala = session.scalar(select(Escalas).where(
                 Escalas.id == escala_id, Escalas.empresa_id == empresa_id, Escalas.ativo.is_(True),
             ))
-            if empresa is None or usuario is None or funcionario is None or escala is None:
+            if (empresa is None or funcionario is None or escala is None
+                    or (not por_funcionario and usuario is None)):
                 raise ScheduleValidationError("VINCULO_NAO_ENCONTRADO", "Usuário, funcionário ou escala indisponível nesta empresa.", 404)
+            usuario_id = funcionario.usuario_id if por_funcionario else usuario_id
             zona = ZoneInfo(empresa.fuso_horario)
             novos = CheckScheduleConflictService._projetar(session, empresa_id, escala, inicio, fim, zona)
             # Não filtra por data_fim NULL nem por setor/ativo da escala: histórico
@@ -210,7 +247,11 @@ class CheckScheduleConflictService:
                         i += 1
                     else:
                         j += 1
-            return {"valida": True, "usuario_id": str(usuario_id), "escala_id": str(escala_id),
+            return {"valida": True, "usuario_id": str(usuario_id) if usuario_id else None,
+                    "funcionario_id": str(funcionario.id), "escala_id": str(escala_id),
+                    **({"periodo_indeterminado": True, "validacao_ate": fim.isoformat(),
+                        "horizonte_validacao_anos": CheckScheduleConflictService.HORIZONTE_INDETERMINADO_ANOS}
+                       if indeterminada else {}),
                     "intervalos": [{"inicio": a.astimezone(zona).isoformat(), "fim": b.astimezone(zona).isoformat()}
                                    for a, b in novos]}, 200
         except ScheduleValidationError as error:

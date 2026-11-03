@@ -164,7 +164,7 @@ def test_only_real_rh_can_manage_or_report(session, contexto, role):
     session.commit()
     assert AfastamentoService.criar(ctx.rh.id, ctx.own.company.id, afastamento(ctx), session=session)[1] == 403
     assert FeriadoService.listar(ctx.rh.id, ctx.own.company.id, session=session)[1] == (200 if role == PapelUsuario.GESTOR else 403)
-    assert EspelhoService.gerar_mensal(ctx.rh.id, ctx.own.company.id, ctx.own.user.id, 2026, 10, session=session)[1] == 403
+    assert EspelhoService.gerar_mensal(ctx.rh.id, ctx.own.company.id, ctx.own.user.id, 2026, 10, session=session)[1] == (200 if role == PapelUsuario.GESTOR else 403)
 
 
 def test_abonos_remove_absence_and_delay_and_sector_holiday_does_not_leak(session, contexto):

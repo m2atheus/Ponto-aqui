@@ -8,6 +8,15 @@ from app.services.setor_service import SetorService
 setor_bp = Blueprint("setores", __name__)
 
 
+@setor_bp.get("/busca")
+@jwt_required()
+def buscar_setores():
+    payload, status = SetorService.buscar(
+        get_jwt_identity(), get_jwt().get("empresa_id"), request.args.get("q"),
+    )
+    return jsonify(payload), status
+
+
 @setor_bp.get("")
 @jwt_required()
 def listar_setores():

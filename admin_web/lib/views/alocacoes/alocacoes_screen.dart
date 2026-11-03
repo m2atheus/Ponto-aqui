@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,13 +10,15 @@ import '../widgets/responsive_table_container.dart';
 
 import '../../models/alocacao.dart';
 import '../../models/auth_session.dart';
-import '../../models/funcionario.dart';
-import '../../models/setor.dart';
 import '../../providers/alocacoes_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/w06_provider.dart';
 import '../../repositories/repository_failure.dart';
 import '../../utils/civil_date.dart';
 import '../modules/module_placeholder_view.dart';
+import 'alocacao_dialog.dart';
+import 'encerrar_alocacao_dialog.dart';
+import 'transferencia_alocacao_dialog.dart';
 
 class AlocacoesScreen extends ConsumerStatefulWidget {
   const AlocacoesScreen({super.key});
@@ -32,10 +36,49 @@ class _AlocacoesScreenState extends ConsumerState<AlocacoesScreen>
       ref.read(alocacoesProvider.notifier).refreshSilently(cancelToken);
 
   final _scroll = ScrollController();
+  final _pesquisa = TextEditingController();
+  Timer? _debouncePesquisa;
+  String _termoPesquisa = '';
   bool _dialogAberto = false;
+
+  void _pesquisar(String value) {
+    _debouncePesquisa?.cancel();
+    final termo = value.trim().toLowerCase();
+    if (termo.isEmpty) {
+      _limparPesquisa();
+      return;
+    }
+    _debouncePesquisa = Timer(const Duration(milliseconds: 300), () {
+      if (mounted && termo != _termoPesquisa) {
+        setState(() => _termoPesquisa = termo);
+      }
+    });
+  }
+
+  void _limparPesquisa() {
+    _debouncePesquisa?.cancel();
+    _pesquisa.clear();
+    if (_termoPesquisa.isNotEmpty) setState(() => _termoPesquisa = '');
+  }
+
+  List<Alocacao> _filtrarAlocacoes(AlocacoesData data) {
+    // A API atual entrega a lista completa: filtra localmente, sem novas chamadas.
+    if (_termoPesquisa.isEmpty) return data.alocacoes;
+    final funcionarios = {for (final f in data.funcionarios) f.id: f};
+    return data.alocacoes
+        .where((alocacao) {
+          final funcionario = funcionarios[alocacao.funcionarioId];
+          return funcionario != null &&
+              (funcionario.nome.toLowerCase().contains(_termoPesquisa) ||
+                  funcionario.matricula.toLowerCase().contains(_termoPesquisa));
+        })
+        .toList(growable: false);
+  }
 
   @override
   void dispose() {
+    _debouncePesquisa?.cancel();
+    _pesquisa.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -54,12 +97,29 @@ class _AlocacoesScreenState extends ConsumerState<AlocacoesScreen>
         context: context,
         useRootNavigator: false,
         barrierDismissible: false,
-        builder: (_) => _AlocacaoDialog(
-          data: data,
-          alocacao: alocacao,
-          empresaId: session.user.companyId!,
-          sessionToken: session.accessToken,
-        ),
+        builder: (_) => alocacao != null
+            ? EncerrarAlocacaoDialog(
+                alocacao: alocacao,
+                funcionarioNome:
+                    data.funcionarios
+                        .where((f) => f.id == alocacao.funcionarioId)
+                        .firstOrNull
+                        ?.nome ??
+                    'Funcionário',
+                setorNome:
+                    data.setores
+                        .where((s) => s.id == alocacao.setorId)
+                        .firstOrNull
+                        ?.nome ??
+                    'Setor',
+                sessionToken: session.accessToken,
+              )
+            : AlocacaoDialog(
+                data: data,
+                alocacao: alocacao,
+                empresaId: session.user.companyId!,
+                sessionToken: session.accessToken,
+              ),
       );
       if (mounted &&
           saved == true &&
@@ -72,6 +132,61 @@ class _AlocacoesScreenState extends ConsumerState<AlocacoesScreen>
                   ? 'Alocação cadastrada.'
                   : 'Alocação encerrada. Histórico preservado.',
             ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _dialogAberto = false);
+    }
+  }
+
+  Future<void> _mudar(AlocacoesData data, Alocacao atual) async {
+    final sessao = ref.read(authProvider).asData?.value;
+    if (_dialogAberto ||
+        sessao == null ||
+        sessao.isMock ||
+        sessao.user.role != UserRole.rh) {
+      return;
+    }
+    setState(() => _dialogAberto = true);
+    try {
+      final salvo = await showDialog<bool>(
+        context: context,
+        useRootNavigator: false,
+        barrierDismissible: false,
+        builder: (_) => TransferenciaAlocacaoDialog(
+          atual: atual,
+          sessionToken: sessao.accessToken,
+          funcionarioNome:
+              data.funcionarios
+                  .where((f) => f.id == atual.funcionarioId)
+                  .firstOrNull
+                  ?.nome ??
+              'Funcionário',
+          setorNome:
+              data.setores
+                  .where((s) => s.id == atual.setorId)
+                  .firstOrNull
+                  ?.nome ??
+              'Setor',
+          escalaNome: atual.escalaId == null
+              ? 'Sem escala'
+              : data.escalas
+                        .where((e) => e.id == atual.escalaId)
+                        .firstOrNull
+                        ?.nome ??
+                    'Escala indisponível',
+        ),
+      );
+      if (mounted &&
+          salvo == true &&
+          ref.read(authProvider).asData?.value?.accessToken ==
+              sessao.accessToken) {
+        ref.invalidate(alocacoesProvider);
+        ref.invalidate(w06Provider);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Funcionário transferido. Histórico preservado.'),
           ),
         );
       }
@@ -96,10 +211,9 @@ class _AlocacoesScreenState extends ConsumerState<AlocacoesScreen>
         !dados.isLoading &&
         !dados.hasError &&
         !_dialogAberto;
-    final temOpcoes =
-        data != null &&
-        data.funcionarios.any((f) => f.ativo) &&
-        data.setores.any((s) => s.ativo);
+    final visiveis = data == null
+        ? const <Alocacao>[]
+        : _filtrarAlocacoes(data);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -116,7 +230,7 @@ class _AlocacoesScreenState extends ConsumerState<AlocacoesScreen>
               ),
               FilledButton.icon(
                 key: const Key('nova-alocacao'),
-                onPressed: enabled && temOpcoes
+                onPressed: enabled && data != null
                     ? () => _formulario(data)
                     : null,
                 icon: const Icon(Icons.add),
@@ -129,6 +243,33 @@ class _AlocacoesScreenState extends ConsumerState<AlocacoesScreen>
             'Funcionários, setores e períodos da sua empresa. Encerrar mantém o histórico.',
           ),
           const SizedBox(height: 24),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            // Só o campo acompanha o texto imediatamente; a tabela espera o debounce.
+            child: ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _pesquisa,
+              builder: (context, value, child) => TextField(
+                key: const Key('alocacoes-pesquisa'),
+                controller: _pesquisa,
+                enabled: enabled && data != null,
+                onChanged: _pesquisar,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  hintText: 'Pesquisar por Nome ou Matrícula do funcionário...',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: value.text.isEmpty
+                      ? null
+                      : IconButton(
+                          key: const Key('alocacoes-limpar-pesquisa'),
+                          tooltip: 'Limpar pesquisa',
+                          onPressed: _limparPesquisa,
+                          icon: const Icon(Icons.clear),
+                        ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
           if (dados.isLoading) const LinearProgressIndicator(),
           if (dados.hasError)
             Card(
@@ -158,41 +299,48 @@ class _AlocacoesScreenState extends ConsumerState<AlocacoesScreen>
               ),
             ),
           if (data != null && !dados.hasError) ...[
-            if (!temOpcoes)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 16),
-                child: Card(
-                  child: Padding(
-                    padding: EdgeInsets.all(20),
+            if (visiveis.isEmpty)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Semantics(
+                    liveRegion: true,
                     child: Text(
-                      'Para criar uma alocação, cadastre ao menos um funcionário ativo e um setor ativo na sua empresa.',
+                      _termoPesquisa.isEmpty
+                          ? 'Nenhuma alocação cadastrada.'
+                          : 'Nenhuma alocação encontrada para este termo.',
                     ),
                   ),
                 ),
-              ),
-            if (data.alocacoes.isEmpty)
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Text('Nenhuma alocação cadastrada.'),
-                ),
               )
             else
-              _tabela(data, enabled),
+              _tabela(data, enabled, visiveis),
           ],
         ],
       ),
     );
   }
 
-  Widget _tabela(AlocacoesData data, bool enabled) {
+  Widget _tabela(AlocacoesData data, bool enabled, List<Alocacao> visiveis) {
     final funcionarios = {for (final f in data.funcionarios) f.id: f};
     final setores = {for (final s in data.setores) s.id: s};
+    final hoje = civilDateIso(DateTime.now());
+    final colors = Theme.of(context).colorScheme;
+    bool encerrada(Alocacao row) =>
+        row.dataFim != null && row.dataFim!.compareTo(hoje) < 0;
+    Widget texto(Alocacao row, String valor) => Text(
+      valor,
+      style: encerrada(row)
+          ? TextStyle(color: colors.onSurfaceVariant.withValues(alpha: 0.65))
+          : null,
+    );
     return Card(
       child: ResponsiveTableContainer(
         controller: _scroll,
         padding: const EdgeInsets.only(bottom: 12),
         child: DataTable(
+          columnSpacing: 24,
+          horizontalMargin: 20,
           columns: const [
             DataColumn(label: Text('Funcionário')),
             DataColumn(label: Text('Matrícula')),
@@ -202,41 +350,79 @@ class _AlocacoesScreenState extends ConsumerState<AlocacoesScreen>
             DataColumn(label: Text('Ações')),
           ],
           rows: [
-            for (final row in data.alocacoes)
+            for (final row in visiveis)
               DataRow(
                 key: ValueKey(row.id),
+                color: WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.hovered)) {
+                    return colors.primary.withValues(alpha: 0.06);
+                  }
+                  return encerrada(row)
+                      ? (Theme.of(context).brightness == Brightness.dark
+                            ? colors.surfaceContainerHighest.withValues(
+                                alpha: 0.35,
+                              )
+                            : const Color(0xFFFAFAFA))
+                      : null;
+                }),
                 cells: [
                   DataCell(
-                    Text(
+                    texto(
+                      row,
                       funcionarios[row.funcionarioId]?.nome ??
                           'Funcionário ${row.funcionarioId}',
                     ),
                   ),
                   DataCell(
-                    Text(funcionarios[row.funcionarioId]?.matricula ?? '—'),
+                    texto(
+                      row,
+                      funcionarios[row.funcionarioId]?.matricula ?? '—',
+                    ),
                   ),
                   DataCell(
-                    Text(setores[row.setorId]?.nome ?? 'Setor ${row.setorId}'),
+                    texto(
+                      row,
+                      setores[row.setorId]?.nome ?? 'Setor ${row.setorId}',
+                    ),
                   ),
-                  DataCell(Text(civilDateDisplay(row.dataInicio))),
+                  DataCell(texto(row, civilDateDisplay(row.dataInicio))),
                   DataCell(
-                    Text(
+                    texto(
+                      row,
                       row.dataFim == null
                           ? 'Em aberto'
                           : civilDateDisplay(row.dataFim!),
                     ),
                   ),
                   DataCell(
-                    row.dataFim == null
-                        ? IconButton(
-                            key: Key('encerrar-alocacao-${row.id}'),
-                            tooltip: 'Encerrar alocação',
-                            onPressed: enabled
-                                ? () => _formulario(data, row)
-                                : null,
-                            icon: const Icon(Icons.event_busy_outlined),
-                          )
-                        : const Text('Fim definido'),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (!encerrada(row))
+                          OutlinedButton.icon(
+                            key: Key('transferir-alocacao-${row.id}'),
+                            onPressed: enabled ? () => _mudar(data, row) : null,
+                            icon: const Icon(Icons.swap_horiz),
+                            label: const Text('Transferir'),
+                          ),
+                        row.dataFim == null
+                            ? IconButton(
+                                key: Key('encerrar-alocacao-${row.id}'),
+                                tooltip: 'Somente encerrar alocação',
+                                onPressed: enabled
+                                    ? () => _formulario(data, row)
+                                    : null,
+                                icon: const Icon(Icons.event_busy_outlined),
+                              )
+                            : Padding(
+                                padding: const EdgeInsets.only(left: 8),
+                                child: texto(
+                                  row,
+                                  encerrada(row) ? 'Encerrada' : 'Fim agendado',
+                                ),
+                              ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -245,325 +431,4 @@ class _AlocacoesScreenState extends ConsumerState<AlocacoesScreen>
       ),
     );
   }
-}
-
-class _AlocacaoDialog extends ConsumerStatefulWidget {
-  const _AlocacaoDialog({
-    required this.data,
-    required this.empresaId,
-    required this.sessionToken,
-    this.alocacao,
-  });
-  final AlocacoesData data;
-  final String empresaId;
-  final String sessionToken;
-  final Alocacao? alocacao;
-  @override
-  ConsumerState<_AlocacaoDialog> createState() => _AlocacaoDialogState();
-}
-
-class _AlocacaoDialogState extends ConsumerState<_AlocacaoDialog> {
-  final _form = GlobalKey<FormState>();
-  late final TextEditingController _inicio;
-  late final TextEditingController _fim;
-  String? _funcionarioId;
-  String? _setorId;
-  String _escalaId = 'sem-escala';
-  bool _salvando = false;
-  String? _erro;
-  bool get _encerramento => widget.alocacao != null;
-
-  @override
-  void initState() {
-    super.initState();
-    final hoje = civilDateIso(DateTime.now());
-    final inicio = widget.alocacao?.dataInicio ?? hoje;
-    _inicio = TextEditingController(text: civilDateDisplay(inicio));
-    _fim = TextEditingController(
-      text: _encerramento
-          ? civilDateDisplay(inicio.compareTo(hoje) > 0 ? inicio : hoje)
-          : '',
-    );
-  }
-
-  @override
-  void dispose() {
-    _inicio.dispose();
-    _fim.dispose();
-    super.dispose();
-  }
-
-  String? _validarData(String? value, {bool fim = false}) {
-    if (value == null || value.trim().isEmpty) {
-      return fim && !_encerramento && _escalaId == 'sem-escala'
-          ? null
-          : 'Informe a data.';
-    }
-    try {
-      final iso = civilDateFromInput(value);
-      if (fim && iso.compareTo(civilDateFromInput(_inicio.text)) < 0) {
-        return 'A data final não pode ser anterior à inicial.';
-      }
-      return null;
-    } on FormatException {
-      return 'Informe uma data válida em DD/MM/AAAA.';
-    }
-  }
-
-  Future<void> _selecionarData(
-    TextEditingController controller,
-    bool fim,
-  ) async {
-    if (_salvando) return;
-    DateTime initial;
-    try {
-      initial = DateTime.parse(civilDateFromInput(controller.text));
-    } on FormatException {
-      initial = DateTime.now();
-    }
-    final selected = await showDatePicker(
-      context: context,
-      useRootNavigator: false,
-      initialEntryMode: DatePickerEntryMode.calendarOnly,
-      initialDate: initial,
-      firstDate: DateTime(1),
-      lastDate: DateTime(9999, 12, 31),
-      helpText: fim ? 'Data de fim' : 'Data de início',
-      cancelText: 'Cancelar',
-      confirmText: 'Selecionar',
-      fieldLabelText: 'Data',
-      fieldHintText: 'DD/MM/AAAA',
-    );
-    if (mounted && selected != null) {
-      setState(
-        () => controller.text = civilDateDisplay(civilDateIso(selected)),
-      );
-    }
-  }
-
-  Future<void> _salvar() async {
-    if (_salvando || !_form.currentState!.validate()) return;
-    final session = ref.read(authProvider).asData?.value;
-    if (session?.accessToken != widget.sessionToken ||
-        session?.user.companyId != widget.empresaId) {
-      return;
-    }
-    setState(() {
-      _salvando = true;
-      _erro = null;
-    });
-    try {
-      final anterior = widget.alocacao;
-      final dto = Alocacao(
-        id: anterior?.id ?? '',
-        funcionarioId: anterior?.funcionarioId ?? _funcionarioId!,
-        setorId: anterior?.setorId ?? _setorId!,
-        dataInicio: anterior?.dataInicio ?? civilDateFromInput(_inicio.text),
-        dataFim: _fim.text.trim().isEmpty
-            ? null
-            : civilDateFromInput(_fim.text),
-        empresaId: widget.empresaId,
-        escalaId:
-            anterior?.escalaId ??
-            (_escalaId == 'sem-escala' ? null : _escalaId),
-      );
-      await ref.read(alocacoesProvider.notifier).salvar(dto);
-      if (mounted &&
-          ref.read(authProvider).asData?.value?.accessToken ==
-              widget.sessionToken) {
-        Navigator.pop(context, true);
-      }
-    } on RepositoryFailure catch (error) {
-      if (mounted &&
-          ref.read(authProvider).asData?.value?.accessToken ==
-              widget.sessionToken) {
-        setState(() => _erro = error.message);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: Theme.of(context).colorScheme.error,
-            content: Text(
-              error.message,
-              style: TextStyle(color: Theme.of(context).colorScheme.onError),
-            ),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _salvando = false);
-    }
-  }
-
-  Widget _campoData(
-    TextEditingController controller, {
-    required bool fim,
-  }) => TextFormField(
-    key: Key(fim ? 'alocacao-data-fim' : 'alocacao-data-inicio'),
-    controller: controller,
-    enabled: !_salvando,
-    maxLength: 10,
-    keyboardType: TextInputType.datetime,
-    validator: (value) => _validarData(value, fim: fim),
-    decoration: InputDecoration(
-      labelText: fim
-          ? (_encerramento || _escalaId != 'sem-escala'
-                ? 'Fim'
-                : 'Fim (opcional)')
-          : 'Início',
-      hintText: 'DD/MM/AAAA',
-      counterText: '',
-      suffixIcon: IconButton(
-        tooltip: fim ? 'Selecionar data de fim' : 'Selecionar data de início',
-        onPressed: _salvando ? null : () => _selecionarData(controller, fim),
-        icon: const Icon(Icons.calendar_month_outlined),
-      ),
-    ),
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    final funcionarios = widget.data.funcionarios
-        .where((f) => f.ativo)
-        .toList();
-    final setores = widget.data.setores.where((s) => s.ativo).toList();
-    final anterior = widget.alocacao;
-    return PopScope(
-      canPop: !_salvando,
-      child: AlertDialog(
-        title: Text(_encerramento ? 'Encerrar alocação' : 'Nova Alocação'),
-        scrollable: true,
-        content: SizedBox(
-          width: 520,
-          child: Form(
-            key: _form,
-            autovalidateMode: AutovalidateMode.onUserInteraction,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (anterior != null) ...[
-                  Text(
-                    'Funcionário: ${_nomeFuncionario(anterior.funcionarioId)}',
-                  ),
-                  const SizedBox(height: 8),
-                  Text('Setor: ${_nomeSetor(anterior.setorId)}'),
-                  const SizedBox(height: 8),
-                  Text('Início: ${civilDateDisplay(anterior.dataInicio)}'),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Defina o último dia desta alocação. O vínculo ficará no histórico.',
-                  ),
-                ] else ...[
-                  DropdownButtonFormField<String>(
-                    key: const Key('alocacao-funcionario'),
-                    isExpanded: true,
-                    initialValue: _funcionarioId,
-                    decoration: const InputDecoration(labelText: 'Funcionário'),
-                    items: [
-                      for (final Funcionario f in funcionarios)
-                        DropdownMenuItem(
-                          value: f.id,
-                          child: Text(
-                            '${f.nome} — ${f.matricula}',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                    ],
-                    onChanged: _salvando
-                        ? null
-                        : (value) => setState(() => _funcionarioId = value),
-                    validator: (value) =>
-                        value == null ? 'Selecione o funcionário.' : null,
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    key: const Key('alocacao-setor'),
-                    isExpanded: true,
-                    initialValue: _setorId,
-                    decoration: const InputDecoration(labelText: 'Setor'),
-                    items: [
-                      for (final Setor s in setores)
-                        DropdownMenuItem(
-                          value: s.id,
-                          child: Text(s.nome, overflow: TextOverflow.ellipsis),
-                        ),
-                    ],
-                    onChanged: _salvando
-                        ? null
-                        : (value) => setState(() => _setorId = value),
-                    validator: (value) =>
-                        value == null ? 'Selecione o setor.' : null,
-                  ),
-                  const SizedBox(height: 16),
-                  _campoData(_inicio, fim: false),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    key: const Key('alocacao-escala'),
-                    isExpanded: true,
-                    initialValue: _escalaId,
-                    decoration: const InputDecoration(labelText: 'Escala'),
-                    items: [
-                      const DropdownMenuItem(
-                        value: 'sem-escala',
-                        child: Text('Sem escala (sem apuração de jornada)'),
-                      ),
-                      for (final e in widget.data.escalas.where(
-                        (e) => e.ativa && e.modelo != 'Legado',
-                      ))
-                        DropdownMenuItem(
-                          value: e.id,
-                          child: Text(e.nome, overflow: TextOverflow.ellipsis),
-                        ),
-                    ],
-                    onChanged: _salvando
-                        ? null
-                        : (v) => setState(() => _escalaId = v!),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                _campoData(_fim, fim: true),
-                if (!_encerramento) ...[
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Com escala, informe o fim do período para validar conflitos de jornada. Sem escala, o vínculo pode ficar em aberto.',
-                  ),
-                ],
-                if (_erro != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    _erro!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                ],
-                if (_salvando) ...[
-                  const SizedBox(height: 12),
-                  const LinearProgressIndicator(),
-                ],
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: _salvando ? null : () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: _salvando ? null : _salvar,
-            child: Text(
-              _salvando
-                  ? 'Salvando...'
-                  : (_encerramento ? 'Encerrar' : 'Salvar'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _nomeFuncionario(String id) =>
-      widget.data.funcionarios.where((f) => f.id == id).firstOrNull?.nome ?? id;
-  String _nomeSetor(String id) =>
-      widget.data.setores.where((s) => s.id == id).firstOrNull?.nome ?? id;
 }

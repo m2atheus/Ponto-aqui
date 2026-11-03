@@ -499,14 +499,13 @@ void main() {
       expect(find.text('Setores'), findsNothing);
       expect(find.text('Escalas'), findsNothing);
       expect(find.text('Funcionários'), findsNothing);
-      expect(find.text('Relatórios'), findsNothing);
+      expect(find.text('Relatórios'), findsOneWidget);
       expect(find.text('Equipe'), findsOneWidget);
       for (final path in [
         '/setores',
         '/escalas',
         '/funcionarios',
         '/alocacoes',
-        '/relatorios',
       ]) {
         app.router.go(path);
         await tester.pumpAndSettle();

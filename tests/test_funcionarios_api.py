@@ -64,6 +64,44 @@ def test_search_is_case_insensitive_limited_and_tenant_scoped(funcionarios_api, 
 
 
 @pytest.mark.postgres
+def test_search_prioritizes_name_or_registration_prefix_before_limit(funcionarios_api, session, tenants):
+    client, headers, rh = funcionarios_api
+    session.add_all([
+        Funcionarios(empresa_id=rh.empresa_id, nome=f"Ana Lima {n:02}", matricula=f"MID-{n:03}")
+        for n in range(25)
+    ] + [
+        Funcionarios(empresa_id=rh.empresa_id, nome="Maria Silva", matricula="PR-001"),
+        Funcionarios(empresa_id=rh.empresa_id, nome="Marcelo Santos", matricula="PR-002"),
+        Funcionarios(empresa_id=rh.empresa_id, nome="Carla Souza", matricula="MA-003"),
+        Funcionarios(empresa_id=tenants[1].company.id, nome="Marcela Externa", matricula="MA-004"),
+    ])
+    session.commit()
+    response = client.get("/api/web/funcionarios/busca", headers=headers, query_string={"q": "mA"})
+    assert response.status_code == 200
+    rows = response.json["funcionarios"]
+    assert len(rows) == 20
+    assert [r["nome"] for r in rows[:3]] == ["Carla Souza", "Marcelo Santos", "Maria Silva"]
+    assert [r["nome"] for r in rows[3:]] == [f"Ana Lima {n:02}" for n in range(17)]
+    assert {r["empresa_id"] for r in rows} == {str(rh.empresa_id)}
+
+
+@pytest.mark.postgres
+def test_registration_prefix_priority_and_literal_wildcards(funcionarios_api, session):
+    client, headers, rh = funcionarios_api
+    session.add_all([
+        Funcionarios(empresa_id=rh.empresa_id, nome="Ana", matricula="X-123"),
+        Funcionarios(empresa_id=rh.empresa_id, nome="Zelia", matricula="123-A"),
+        Funcionarios(empresa_id=rh.empresa_id, nome="Ana % Pessoa", matricula="W-001"),
+        Funcionarios(empresa_id=rh.empresa_id, nome="% Pessoa", matricula="W-002"),
+    ])
+    session.commit()
+    response = client.get("/api/web/funcionarios/busca", headers=headers, query_string={"matricula": "123"})
+    assert [r["nome"] for r in response.json["funcionarios"]] == ["Zelia", "Ana"]
+    response = client.get("/api/web/funcionarios/busca", headers=headers, query_string={"q": "%"})
+    assert [r["nome"] for r in response.json["funcionarios"]] == ["% Pessoa", "Ana % Pessoa"]
+
+
+@pytest.mark.postgres
 def test_search_handles_empty_wildcards_history_and_invalid_query(funcionarios_api, session):
     client, headers, rh = funcionarios_api
     session.add(Funcionarios(empresa_id=rh.empresa_id, nome="Pessoa Histórica", matricula="ID_10%", ativo=False))
@@ -102,7 +140,7 @@ def test_search_revalidates_role_and_tenant_claim(funcionarios_api, session, ten
     assert client.get("/api/web/funcionarios/busca?q=ana", headers={"Authorization": "Bearer " + forged}).status_code == 401
     rh.papel = PapelUsuario.GESTOR
     session.commit()
-    assert client.get("/api/web/funcionarios/busca?q=ana", headers=headers).status_code == 403
+    assert client.get("/api/web/funcionarios/busca?q=ana", headers=headers).status_code == 200
 
 
 @pytest.mark.parametrize(("path", "method"), [
