@@ -19,6 +19,40 @@ class FuncionarioError(Exception):
 
 class FuncionarioService:
     @staticmethod
+    def resetar_senha(usuario_id, empresa_id, funcionario_id, dados, session=None):
+        """Redefine apenas a credencial vinculada, preservando cadastro e pontos."""
+        def operacao(session, empresa):
+            if not isinstance(dados, dict) or set(dados) != {"nova_senha"}:
+                raise FuncionarioError("Informe somente nova_senha para redefinir o acesso.")
+            senha = dados["nova_senha"]
+            # Mesma política utilizada ao gerar o acesso pelo RH.
+            if not isinstance(senha, str) or not 8 <= len(senha) <= 1024 or not senha.strip():
+                raise FuncionarioError("A senha deve conter entre 8 e 1024 caracteres e não pode conter apenas espaços.")
+            try:
+                alvo_id = uuid.UUID(str(funcionario_id))
+            except (ValueError, TypeError, AttributeError):
+                raise FuncionarioError("Funcionário não encontrado nesta empresa.", 404, "FUNCIONARIO_NAO_ENCONTRADO") from None
+            funcionario = session.scalar(select(Funcionarios).where(
+                Funcionarios.id == alvo_id, Funcionarios.empresa_id == empresa,
+            ).with_for_update().execution_options(populate_existing=True))
+            if funcionario is None:
+                raise FuncionarioError("Funcionário não encontrado nesta empresa.", 404, "FUNCIONARIO_NAO_ENCONTRADO")
+            if funcionario.usuario_id is None:
+                raise FuncionarioError("Gere o acesso ao aplicativo antes de redefinir a senha.", 409, "ACESSO_NAO_VINCULADO")
+            usuario = session.scalar(select(Usuarios).where(Usuarios.id == funcionario.usuario_id,
+                Usuarios.empresa_id == empresa, Usuarios.papel == PapelUsuario.FUNCIONARIO,
+            ).with_for_update().execution_options(populate_existing=True))
+            if usuario is None:
+                raise FuncionarioError("A conta vinculada não é um acesso de funcionário desta empresa.", 409, "ACESSO_INCOMPATIVEL")
+            usuario.senha_hash = AuthService.hash_senha(senha)
+            session.flush()
+            resultado = {"mensagem": "Senha redefinida com sucesso para este funcionário.",
+                "funcionario_id": str(funcionario.id), "empresa_id": str(empresa), "usuario_id": str(usuario.id)}
+            session.commit()
+            return resultado, 200
+        return FuncionarioService._executar(usuario_id, empresa_id, operacao, session)
+
+    @staticmethod
     def vincular_acesso(usuario_id, empresa_id, funcionario_id, dados, session=None):
         """Cria a credencial e vincula o funcionário na mesma transação."""
         def operacao(session, empresa):

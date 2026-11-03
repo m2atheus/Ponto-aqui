@@ -9,6 +9,38 @@ class FuncionarioRepository {
   final Dio _dio;
   final String empresaId;
 
+  Future<void> resetarSenha(String funcionarioId, String novaSenha) =>
+      repositoryRequest(() async {
+        if (novaSenha.length < 8 ||
+            novaSenha.length > 1024 ||
+            novaSenha.trim().isEmpty) {
+          throw const RepositoryFailure(
+            'A senha deve conter entre 8 e 1024 caracteres e não pode conter apenas espaços.',
+          );
+        }
+        final id = repositoryResourceId(funcionarioId);
+        final base = Uri.parse(_dio.options.baseUrl);
+        final endpoint = '/api/v1/admin/funcionarios/$id/resetar-senha';
+        final path = base.path.replaceFirst(RegExp(r'/api/web/?$'), endpoint);
+        final url = base.path == path
+            ? base.resolve(endpoint).toString()
+            : base.replace(path: path, query: null, fragment: null).toString();
+        final response = await _dio.put<Object?>(
+          url,
+          data: {'nova_senha': novaSenha},
+        );
+        final dto = managementObject(response.data);
+        if (response.statusCode != 200 ||
+            dto['funcionario_id'] != id ||
+            dto['empresa_id'] != empresaId ||
+            dto['usuario_id'] is! String ||
+            (dto['usuario_id'] as String).isEmpty) {
+          throw const FormatException(
+            'Redefinição de senha não confirmada pela API.',
+          );
+        }
+      });
+
   Funcionario _parse(Object? value) {
     final dto = Funcionario.fromJson(value);
     if (dto.empresaId != empresaId) {

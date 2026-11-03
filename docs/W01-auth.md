@@ -146,6 +146,24 @@ composta. Edição pode alterar a conta existente, sem perder seu ID/histórico;
 `PATCH` com `{"ativo": false}` desativa a empresa sem excluí-la.
 Escalas ainda usam listas em memória. O login mockado fica desabilitado por padrão.
 
+## Redefinir a senha do funcionário
+
+No painel, abra **Funcionários → Aparelhos e segurança → Credenciais de acesso → Redefinir Senha**. O formulário pede a nova senha e sua confirmação. A política é a mesma do cadastro: de 8 a 1024 caracteres, sem aceitar uma senha composta apenas por espaços.
+
+`PUT /api/v1/admin/funcionarios/<funcionario_id>/resetar-senha`, com `Authorization: Bearer <JWT>`:
+
+```json
+{"nova_senha": "NovaSenhaDeExemplo123!"}
+```
+
+A ação é exclusiva do **RH da própria empresa**, conforme o perfil e a empresa revalidados no banco. Gestor, Superadmin e os perfis do aplicativo não podem executá-la. A empresa não é recebida no payload.
+
+O serviço bloqueia o funcionário e a conta vinculada na transação e altera somente `usuarios.senha_hash`, utilizando o mesmo `scrypt` do login. Não cria uma conta quando falta `usuario_id`, não permite redefinir contas administrativas e não reativa cadastros inativos. Não altera aparelhos, alocações, ajustes ou marcações.
+
+O retorno HTTP 200 contém apenas `mensagem`, `funcionario_id`, `empresa_id` e `usuario_id`, com `Cache-Control: no-store`; não devolve senha ou hash. Payload inválido retorna 400, sessão inválida retorna 401, papel sem permissão retorna 403, funcionário de outra empresa retorna 404 e ausência/incompatibilidade do acesso vinculado retorna 409. Falhas de banco desfazem a alteração e retornam 503.
+
+A senha anterior deixa de funcionar nos novos logins. JWTs já emitidos seguem sua validade atual; a revogação de acesso a aparelhos continua sendo uma ação separada no painel.
+
 Referências: [hashes de senha do Werkzeug](https://werkzeug.palletsprojects.com/en/stable/utils/#werkzeug.security.generate_password_hash),
 [callbacks JWT](https://flask-jwt-extended.readthedocs.io/en/stable/api.html)
 e [constraints de exclusão PostgreSQL](https://www.postgresql.org/docs/current/rangetypes.html#RANGETYPES-CONSTRAINT).

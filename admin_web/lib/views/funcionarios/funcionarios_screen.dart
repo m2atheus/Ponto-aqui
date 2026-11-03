@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -31,14 +33,51 @@ class _FuncionariosScreenState extends ConsumerState<FuncionariosScreen>
       ref.read(funcionariosProvider.notifier).refreshSilently(cancelToken);
 
   final _scroll = ScrollController();
+  final _pesquisa = TextEditingController();
+  Timer? _debouncePesquisa;
+  String _termoPesquisa = '';
   bool _dialogAberto = false;
   bool _confirmando = false;
   String? _alterandoStatusId;
   bool get _ocupado =>
       _dialogAberto || _confirmando || _alterandoStatusId != null;
 
+  void _pesquisar(String texto) {
+    _debouncePesquisa?.cancel();
+    final termo = texto.trim().toLowerCase();
+    if (termo.isEmpty) {
+      _limparPesquisa();
+      return;
+    }
+    _debouncePesquisa = Timer(const Duration(milliseconds: 300), () {
+      if (mounted && termo != _termoPesquisa) {
+        setState(() => _termoPesquisa = termo);
+      }
+    });
+  }
+
+  void _limparPesquisa() {
+    _debouncePesquisa?.cancel();
+    _pesquisa.clear();
+    if (_termoPesquisa.isNotEmpty) setState(() => _termoPesquisa = '');
+  }
+
+  List<Funcionario> _filtrarFuncionarios(List<Funcionario> funcionarios) {
+    // Filtra os dados já carregados; a pesquisa não dispara requisições HTTP.
+    if (_termoPesquisa.isEmpty) return funcionarios;
+    return funcionarios
+        .where(
+          (funcionario) =>
+              funcionario.nome.toLowerCase().contains(_termoPesquisa) ||
+              funcionario.matricula.toLowerCase().contains(_termoPesquisa),
+        )
+        .toList(growable: false);
+  }
+
   @override
   void dispose() {
+    _debouncePesquisa?.cancel();
+    _pesquisa.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -230,6 +269,8 @@ class _FuncionariosScreenState extends ConsumerState<FuncionariosScreen>
     final podeGravar =
         !session!.isMock && !dados.isLoading && !dados.hasError && !_ocupado;
     final podeAtualizar = !session.isMock && !dados.isLoading && !_ocupado;
+    final rows = dados.asData?.value;
+    final filtrados = _filtrarFuncionarios(rows ?? const <Funcionario>[]);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -257,6 +298,34 @@ class _FuncionariosScreenState extends ConsumerState<FuncionariosScreen>
             'Cadastros da sua empresa. Desativar mantém o histórico de trabalho.',
           ),
           const SizedBox(height: 24),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            // Reconstrói apenas o campo para atualizar o botão de limpar.
+            // A tabela aguarda o debounce antes de aplicar o filtro.
+            child: ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _pesquisa,
+              builder: (context, value, child) => TextField(
+                key: const Key('funcionarios-pesquisa'),
+                controller: _pesquisa,
+                enabled: podeGravar && rows != null,
+                onChanged: _pesquisar,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  hintText: 'Pesquisar por nome ou matrícula...',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: value.text.isEmpty
+                      ? null
+                      : IconButton(
+                          key: const Key('funcionarios-limpar-pesquisa'),
+                          tooltip: 'Limpar pesquisa',
+                          onPressed: _limparPesquisa,
+                          icon: const Icon(Icons.clear),
+                        ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
           if (dados.isLoading || _alterandoStatusId != null)
             const Padding(
               padding: EdgeInsets.only(bottom: 16),
@@ -289,12 +358,22 @@ class _FuncionariosScreenState extends ConsumerState<FuncionariosScreen>
                 ),
               ),
             ),
-          if (dados.asData?.value case final rows?) ...[
-            if (rows.isEmpty)
-              const Card(
+          if (rows != null) ...[
+            if (filtrados.isEmpty)
+              Card(
                 child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Text('Nenhum funcionário cadastrado.'),
+                  padding: const EdgeInsets.all(24),
+                  child: Center(
+                    child: Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        _termoPesquisa.isEmpty
+                            ? 'Nenhum funcionário cadastrado.'
+                            : 'Nenhum funcionário encontrado para o termo pesquisado.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
                 ),
               )
             else
@@ -311,7 +390,7 @@ class _FuncionariosScreenState extends ConsumerState<FuncionariosScreen>
                       DataColumn(label: Text('Ações')),
                     ],
                     rows: [
-                      for (final funcionario in rows)
+                      for (final funcionario in filtrados)
                         DataRow(
                           key: ValueKey(funcionario.id),
                           cells: [

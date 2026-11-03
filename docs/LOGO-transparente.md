@@ -16,6 +16,16 @@ legibilidade da marca sobre a Sidebar escura. Não foi usado o CLI da API.
 
 ## Prompts utilizados
 
+### Favicon transparente do navegador
+
+O arquivo `admin_web/web/icons/favicon-transparent.png` é usado pelo `rel="icon"` em `admin_web/web/index.html`. Possui canal alfa e substitui, na aba do navegador, a versão com fundo branco. O nome novo também evita reutilizar o favicon antigo em cache. O ícone original permanece no projeto.
+
+Gerado pela ferramenta integrada `image_gen.imagegen`, com `transparent_background=true`, usando `admin_web/web/icons/brand-symbol.png` como imagem de edição. Não foi usado o CLI da API.
+
+```text
+Use case: background-extraction. Asset type: production favicon for the existing Ponto Aqui Flutter Web administrative dashboard. Edit target: the referenced square clock/map-pin/checkmark logo image. Remove ONLY all white background to genuine transparent alpha, including the large outer square and the white negative spaces inside the clock, between the two pin sections, and around the artwork. Preserve the existing exact geometry, navy blue and teal palette, subtle gradients, clock ticks and checkmark. No redesign, no text, no new elements, no shadows, no white halo or matte, no checkerboard drawn into the pixels. Keep the complete emblem centered on a square canvas, with a small even transparent margin and sharp clean edges so it remains legible at 16x16 and 32x32 browser-tab sizes. Output a transparent PNG. The image must have real transparent pixels, not a black or white background.
+```
+
 ### Tema claro
 
 ```text
